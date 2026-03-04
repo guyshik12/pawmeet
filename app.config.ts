@@ -1,5 +1,6 @@
 import { ExpoConfig, ConfigContext } from 'expo/config';
-import { APP_NAME } from './config/app';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { APP_NAME } = require('./config/app') as { APP_NAME: string };
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
