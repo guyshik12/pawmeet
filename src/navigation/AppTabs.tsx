@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Routes } from '../constants/routes';
 import { colors } from '../constants/theme';
-import { Text, TouchableOpacity } from 'react-native';
+import { Text, TouchableOpacity, Image, View } from 'react-native';
 import DiscoverScreen from '../screens/discover/DiscoverScreen';
 import FriendsScreen from '../screens/friends/FriendsScreen';
 import WalksScreen from '../screens/walks/WalksScreen';
@@ -15,6 +15,23 @@ import { useDogStore } from '../store/dogStore';
 const TabIcon = ({ emoji, focused }: { emoji: string; focused: boolean }) => (
   <Text style={{ fontSize: 22, opacity: focused ? 1 : 0.5 }}>{emoji}</Text>
 );
+
+const DogTabIcon = ({ photoUrl, focused }: { photoUrl: string | null; focused: boolean }) => {
+  if (photoUrl) {
+    return (
+      <Image
+        source={{ uri: photoUrl }}
+        style={{
+          width: 28, height: 28, borderRadius: 14,
+          opacity: focused ? 1 : 0.5,
+          borderWidth: focused ? 2 : 0,
+          borderColor: colors.primary,
+        }}
+      />
+    );
+  }
+  return <Text style={{ fontSize: 22, opacity: focused ? 1 : 0.5 }}>🐶</Text>;
+};
 
 export type AppTabsParamList = {
   [Routes.Discover]: undefined;
@@ -29,7 +46,8 @@ export default function AppTabs() {
   const [pickerVisible, setPickerVisible] = useState(false);
   const [addDogVisible, setAddDogVisible] = useState(false);
   const queryClient = useQueryClient();
-  const { dogs } = useDogStore();
+  const { dogs, currentDog } = useDogStore();
+  const dog = currentDog();
 
   return (
     <>
@@ -62,8 +80,8 @@ export default function AppTabs() {
           name={Routes.Profile}
           component={ProfileScreen}
           options={{
-            title: 'Profile',
-            tabBarIcon: ({ focused }) => <TabIcon emoji="👤" focused={focused} />,
+            title: dog?.name ?? 'Profile',
+            tabBarIcon: ({ focused }) => <DogTabIcon photoUrl={dog?.photo_url ?? null} focused={focused} />,
             tabBarButton: (props) => (
               <TouchableOpacity
                 {...props}
