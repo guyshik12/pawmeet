@@ -85,7 +85,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.md,
     borderRadius: borderRadius.md, paddingHorizontal: spacing.sm,
   },
-  rowActive: { backgroundColor: '#FEF3EC' },
+  rowActive: { backgroundColor: colors.surfaceHigh },
   avatar: { width: 48, height: 48, borderRadius: 24, marginRight: spacing.md },
   avatarPlaceholder: {
     width: 48, height: 48, borderRadius: 24, backgroundColor: colors.border,

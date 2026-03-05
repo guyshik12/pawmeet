@@ -26,7 +26,7 @@ export default function Toast({ message, type = 'info', visible, onHide }: Props
 
   if (!visible) return null;
 
-  const bg = type === 'success' ? colors.success : type === 'error' ? colors.error : colors.text;
+  const bg = type === 'success' ? colors.success : type === 'error' ? colors.error : colors.surfaceHigh;
 
   return (
     <Animated.View style={[styles.container, { opacity, backgroundColor: bg }]}>
@@ -42,5 +42,5 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 }, elevation: 6, zIndex: 999,
   },
-  text: { ...typography.body, color: colors.surface, textAlign: 'center', fontWeight: '600' },
+  text: { ...typography.body, color: colors.text, textAlign: 'center', fontWeight: '600' },
 });

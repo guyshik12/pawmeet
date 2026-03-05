@@ -1,20 +1,18 @@
 export const colors = {
-  primary: '#F4A261',
-  primaryDark: '#E76F51',
-  primaryLight: '#FDE8D8',
-  secondary: '#2A9D8F',
-  secondaryLight: '#E0F5F3',
-  background: '#FFF8F0',
-  surface: '#FFFFFF',
-  surfaceWarm: '#FFF3E8',
-  text: '#2D1B0E',
-  textSecondary: '#8B6355',
-  textLight: '#C4A098',
-  border: '#F0E0D6',
-  error: '#EF4444',
-  success: '#10B981',
-  warning: '#F59E0B',
-  disabled: '#E8D5CC',
+  primary: '#FFC629',       // Bumble yellow
+  primaryDark: '#E6B000',
+  primaryLight: '#FFF5D6',
+  background: '#1C1C1E',    // near black
+  surface: '#2C2C2E',       // dark card
+  surfaceHigh: '#3A3A3C',   // elevated dark
+  text: '#FFFFFF',
+  textSecondary: '#ABABAB',
+  textLight: '#636366',
+  border: '#3A3A3C',
+  error: '#FF453A',
+  success: '#30D158',
+  warning: '#FFD60A',
+  disabled: '#48484A',
 } as const;
 
 export const spacing = {
@@ -28,9 +26,9 @@ export const spacing = {
 
 export const borderRadius = {
   sm: 8,
-  md: 16,
-  lg: 24,
-  xl: 32,
+  md: 14,
+  lg: 20,
+  xl: 28,
   full: 9999,
 } as const;
 
@@ -45,24 +43,24 @@ export const typography = {
 
 export const shadow = {
   sm: {
-    shadowColor: '#E76F51',
-    shadowOpacity: 0.08,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    elevation: 3,
   },
   md: {
-    shadowColor: '#E76F51',
-    shadowOpacity: 0.12,
+    shadowColor: '#000',
+    shadowOpacity: 0.4,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    elevation: 6,
   },
   lg: {
-    shadowColor: '#E76F51',
-    shadowOpacity: 0.18,
+    shadowColor: '#000',
+    shadowOpacity: 0.5,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
+    elevation: 10,
   },
 } as const;

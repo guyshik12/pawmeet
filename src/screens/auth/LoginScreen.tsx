@@ -30,51 +30,37 @@ export default function LoginScreen({ navigation }: Props) {
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-
-        {/* Hero */}
         <View style={styles.hero}>
           <Text style={styles.heroEmoji}>🐾</Text>
           <Text style={styles.appName}>{APP_NAME}</Text>
           <Text style={styles.tagline}>Find furry friends near you</Text>
         </View>
 
-        {/* Card */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Welcome back!</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Email"
+          placeholderTextColor={colors.textLight}
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Password"
+          placeholderTextColor={colors.textLight}
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+        />
 
-          <View style={styles.inputWrapper}>
-            <Text style={styles.inputLabel}>Email</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="your@email.com"
-              placeholderTextColor={colors.textLight}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-
-          <View style={styles.inputWrapper}>
-            <Text style={styles.inputLabel}>Password</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="••••••••"
-              placeholderTextColor={colors.textLight}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
-          </View>
-
-          <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={handleLogin} disabled={loading}>
-            <Text style={styles.buttonText}>{loading ? 'Signing in…' : 'Sign In 🐾'}</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={handleLogin} disabled={loading}>
+          <Text style={styles.buttonText}>{loading ? 'Signing in…' : 'Sign In'}</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity onPress={() => navigation.navigate(Routes.Register)}>
-          <Text style={styles.link}>New here? <Text style={styles.linkBold}>Create an account →</Text></Text>
+          <Text style={styles.link}>New here? <Text style={styles.linkBold}>Create account</Text></Text>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -84,28 +70,21 @@ export default function LoginScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   scroll: { flexGrow: 1, justifyContent: 'center', padding: spacing.xl },
-  hero: { alignItems: 'center', marginBottom: spacing.xl },
-  heroEmoji: { fontSize: 72, marginBottom: spacing.sm },
-  appName: { ...typography.h1, color: colors.text, marginBottom: spacing.xs },
+  hero: { alignItems: 'center', marginBottom: spacing.xxl },
+  heroEmoji: { fontSize: 72, marginBottom: spacing.md },
+  appName: { ...typography.h1, color: colors.primary, marginBottom: spacing.xs },
   tagline: { ...typography.body, color: colors.textSecondary },
-  card: {
-    backgroundColor: colors.surface, borderRadius: borderRadius.xl,
-    padding: spacing.xl, marginBottom: spacing.lg, ...shadow.md,
-  },
-  cardTitle: { ...typography.h2, color: colors.text, marginBottom: spacing.lg },
-  inputWrapper: { marginBottom: spacing.md },
-  inputLabel: { ...typography.bodySmall, color: colors.textSecondary, fontWeight: '600', marginBottom: spacing.xs },
   input: {
-    backgroundColor: colors.background, borderWidth: 2, borderColor: colors.border,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
     borderRadius: borderRadius.md, padding: spacing.md,
-    ...typography.body, color: colors.text,
+    ...typography.body, color: colors.text, marginBottom: spacing.md,
   },
   button: {
     backgroundColor: colors.primary, borderRadius: borderRadius.full,
-    padding: spacing.md, alignItems: 'center', marginTop: spacing.sm,
+    padding: spacing.md, alignItems: 'center', marginBottom: spacing.lg, ...shadow.md,
   },
   buttonDisabled: { opacity: 0.6 },
-  buttonText: { ...typography.body, color: colors.surface, fontWeight: '800', fontSize: 17 },
+  buttonText: { ...typography.body, color: colors.background, fontWeight: '800', fontSize: 17 },
   link: { ...typography.body, color: colors.textSecondary, textAlign: 'center' },
-  linkBold: { color: colors.primaryDark, fontWeight: '700' },
+  linkBold: { color: colors.primary, fontWeight: '700' },
 });

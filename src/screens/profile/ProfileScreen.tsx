@@ -93,7 +93,7 @@ export default function ProfileScreen({ navigation }: Props) {
         )}
         {uploadingPhoto ? (
           <View style={styles.photoOverlay}>
-            <ActivityIndicator color={colors.surface} size="large" />
+            <ActivityIndicator color={colors.primary} size="large" />
           </View>
         ) : (
           <View style={styles.cameraHint}>
@@ -137,10 +137,10 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { alignItems: 'center', paddingBottom: spacing.xxl },
   photoContainer: { marginTop: spacing.xl, marginBottom: spacing.lg },
-  photo: { width: 150, height: 150, borderRadius: 40, borderWidth: 4, borderColor: colors.primaryLight },
+  photo: { width: 150, height: 150, borderRadius: 40, borderWidth: 4, borderColor: colors.primary },
   photoPlaceholder: {
     width: 150, height: 150, borderRadius: 40,
-    backgroundColor: colors.primaryLight, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: colors.surfaceHigh, justifyContent: 'center', alignItems: 'center',
     borderWidth: 4, borderColor: colors.border,
   },
   photoOverlay: {
@@ -155,8 +155,8 @@ const styles = StyleSheet.create({
   cameraHintText: { fontSize: 15 },
   dogName: { ...typography.h1, color: colors.text },
   dogBreed: {
-    ...typography.bodySmall, color: colors.primaryDark, fontWeight: '700', marginTop: spacing.xs,
-    backgroundColor: colors.primaryLight, paddingHorizontal: spacing.md,
+    ...typography.bodySmall, color: colors.primary, fontWeight: '700', marginTop: spacing.xs,
+    backgroundColor: colors.surfaceHigh, paddingHorizontal: spacing.md,
     paddingVertical: 3, borderRadius: borderRadius.full,
   },
   dogAge: { ...typography.bodySmall, color: colors.textSecondary, marginTop: spacing.xs },
@@ -169,7 +169,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.full, paddingVertical: spacing.sm, paddingHorizontal: spacing.xl,
     ...shadow.md,
   },
-  editBtnText: { ...typography.body, color: colors.surface, fontWeight: '800' },
+  editBtnText: { ...typography.body, color: colors.background, fontWeight: '800' },
   accountSection: {
     width: '90%', marginTop: spacing.xl, padding: spacing.lg,
     backgroundColor: colors.surface, borderRadius: borderRadius.lg,
@@ -191,5 +191,5 @@ const styles = StyleSheet.create({
   noDogTitle: { ...typography.h2, color: colors.text, marginBottom: spacing.sm },
   noDogSubtitle: { ...typography.body, color: colors.textSecondary, marginBottom: spacing.xl, textAlign: 'center' },
   addBtn: { backgroundColor: colors.primary, borderRadius: borderRadius.full, paddingVertical: spacing.md, paddingHorizontal: spacing.xl, ...shadow.md },
-  addBtnText: { ...typography.body, color: colors.surface, fontWeight: '800' },
+  addBtnText: { ...typography.body, color: colors.background, fontWeight: '800' },
 });

@@ -159,14 +159,14 @@ const styles = StyleSheet.create({
     ...shadow.sm,
   },
   bubbleThem: {
-    backgroundColor: colors.surface, alignSelf: 'flex-start', borderBottomLeftRadius: 6,
+    backgroundColor: colors.surfaceHigh, alignSelf: 'flex-start', borderBottomLeftRadius: 6,
     borderWidth: 1.5, borderColor: colors.border,
   },
   bubbleText: { ...typography.body, lineHeight: 22 },
-  bubbleTextMe: { color: colors.surface },
+  bubbleTextMe: { color: colors.background },
   bubbleTextThem: { color: colors.text },
   bubbleTime: { ...typography.caption, marginTop: 3 },
-  bubbleTimeMe: { color: 'rgba(255,255,255,0.65)', textAlign: 'right' },
+  bubbleTimeMe: { color: 'rgba(0,0,0,0.5)', textAlign: 'right' },
   bubbleTimeThem: { color: colors.textLight },
   inputRow: {
     flexDirection: 'row', alignItems: 'flex-end',
@@ -186,5 +186,5 @@ const styles = StyleSheet.create({
     ...shadow.md,
   },
   sendBtnDisabled: { backgroundColor: colors.disabled, shadowOpacity: 0 },
-  sendBtnText: { color: colors.surface, fontSize: 22, fontWeight: '800' },
+  sendBtnText: { color: colors.background, fontSize: 22, fontWeight: '800' },
 });

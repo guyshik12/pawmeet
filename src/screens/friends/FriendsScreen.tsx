@@ -201,7 +201,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.error, borderRadius: 10,
     minWidth: 18, height: 18, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4,
   },
-  badgeText: { ...typography.caption, color: colors.surface, fontWeight: '800' },
+  badgeText: { ...typography.caption, color: colors.text, fontWeight: '800' },
   list: { padding: spacing.md, paddingTop: spacing.lg },
   emptyContainer: { flex: 1 },
   empty: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.xxl },
@@ -213,12 +213,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface, borderRadius: borderRadius.lg,
     padding: spacing.md, marginBottom: spacing.md,
     borderWidth: 1.5, borderColor: colors.border,
-    shadowColor: colors.primaryDark, shadowOpacity: 0.08, shadowRadius: 12,
+    shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 }, elevation: 3,
   },
   avatar: { width: 60, height: 60, borderRadius: 18, marginRight: spacing.md },
   avatarPlaceholder: {
-    width: 60, height: 60, borderRadius: 18, backgroundColor: colors.primaryLight,
+    width: 60, height: 60, borderRadius: 18, backgroundColor: colors.surfaceHigh,
     justifyContent: 'center', alignItems: 'center', marginRight: spacing.md,
   },
   info: { flex: 1 },
@@ -230,7 +230,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.success, borderRadius: borderRadius.md,
     width: 40, height: 40, justifyContent: 'center', alignItems: 'center',
   },
-  acceptText: { color: colors.surface, fontWeight: '800', fontSize: 18 },
+  acceptText: { color: colors.background, fontWeight: '800', fontSize: 18 },
   declineBtn: {
     backgroundColor: colors.border, borderRadius: borderRadius.md,
     width: 40, height: 40, justifyContent: 'center', alignItems: 'center',
@@ -238,7 +238,7 @@ const styles = StyleSheet.create({
   declineText: { color: colors.error, fontWeight: '800', fontSize: 18 },
   chatBtn: {
     width: 40, height: 40, borderRadius: borderRadius.md,
-    backgroundColor: colors.primaryLight, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: colors.surfaceHigh, justifyContent: 'center', alignItems: 'center',
   },
   chatBtnText: { fontSize: 20 },
 });
