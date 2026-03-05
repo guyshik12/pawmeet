@@ -1,16 +1,13 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Routes } from '../constants/routes';
 import { colors } from '../constants/theme';
 import DiscoverScreen from '../screens/discover/DiscoverScreen';
 import FriendsScreen from '../screens/friends/FriendsScreen';
-import DogsScreen from '../screens/dogs/DogsScreen';
 import WalksScreen from '../screens/walks/WalksScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
-
-// Placeholder icon component until we add an icon library
 import { Text } from 'react-native';
+
 const TabIcon = ({ emoji, focused }: { emoji: string; focused: boolean }) => (
   <Text style={{ fontSize: 22, opacity: focused ? 1 : 0.5 }}>{emoji}</Text>
 );
@@ -18,7 +15,6 @@ const TabIcon = ({ emoji, focused }: { emoji: string; focused: boolean }) => (
 export type AppTabsParamList = {
   [Routes.Discover]: undefined;
   [Routes.Friends]: undefined;
-  [Routes.Dogs]: undefined;
   [Routes.Walks]: undefined;
   [Routes.Profile]: undefined;
 };
@@ -40,42 +36,22 @@ export default function AppTabs() {
       <Tab.Screen
         name={Routes.Discover}
         component={DiscoverScreen}
-        options={{
-          title: 'Discover',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🐾" focused={focused} />,
-        }}
+        options={{ title: 'Discover', tabBarIcon: ({ focused }) => <TabIcon emoji="🐾" focused={focused} /> }}
       />
       <Tab.Screen
         name={Routes.Friends}
         component={FriendsScreen}
-        options={{
-          title: 'Friends',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🐶" focused={focused} />,
-        }}
-      />
-      <Tab.Screen
-        name={Routes.Dogs}
-        component={DogsScreen}
-        options={{
-          title: 'My Dogs',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🦴" focused={focused} />,
-        }}
+        options={{ title: 'Friends', tabBarIcon: ({ focused }) => <TabIcon emoji="🐶" focused={focused} /> }}
       />
       <Tab.Screen
         name={Routes.Walks}
         component={WalksScreen}
-        options={{
-          title: 'Walks',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="📅" focused={focused} />,
-        }}
+        options={{ title: 'Walks', tabBarIcon: ({ focused }) => <TabIcon emoji="📅" focused={focused} /> }}
       />
       <Tab.Screen
         name={Routes.Profile}
         component={ProfileScreen}
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ focused }) => <TabIcon emoji="👤" focused={focused} />,
-        }}
+        options={{ title: 'Profile', tabBarIcon: ({ focused }) => <TabIcon emoji="👤" focused={focused} /> }}
       />
     </Tab.Navigator>
   );
