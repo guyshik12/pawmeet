@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { colors, spacing, typography, borderRadius } from '../../constants/theme';
+import { colors, spacing, typography, borderRadius, shadow } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 import { useAuthStore } from '../../store/authStore';
 import { useDogStore } from '../../store/dogStore';
@@ -137,54 +137,59 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { alignItems: 'center', paddingBottom: spacing.xxl },
   photoContainer: { marginTop: spacing.xl, marginBottom: spacing.lg },
-  photo: { width: 140, height: 140, borderRadius: 70 },
+  photo: { width: 150, height: 150, borderRadius: 40, borderWidth: 4, borderColor: colors.primaryLight },
   photoPlaceholder: {
-    width: 140, height: 140, borderRadius: 70,
-    backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center',
+    width: 150, height: 150, borderRadius: 40,
+    backgroundColor: colors.primaryLight, justifyContent: 'center', alignItems: 'center',
+    borderWidth: 4, borderColor: colors.border,
   },
   photoOverlay: {
-    ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)',
-    borderRadius: 70, justifyContent: 'center', alignItems: 'center',
+    ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.35)',
+    borderRadius: 40, justifyContent: 'center', alignItems: 'center',
   },
   cameraHint: {
-    position: 'absolute', bottom: 4, right: 4,
-    backgroundColor: colors.surface, borderRadius: 14, width: 28, height: 28,
-    justifyContent: 'center', alignItems: 'center',
-    shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 3, shadowOffset: { width: 0, height: 1 },
+    position: 'absolute', bottom: 6, right: 6,
+    backgroundColor: colors.primary, borderRadius: 16, width: 32, height: 32,
+    justifyContent: 'center', alignItems: 'center', ...shadow.sm,
   },
-  cameraHintText: { fontSize: 14 },
+  cameraHintText: { fontSize: 15 },
   dogName: { ...typography.h1, color: colors.text },
-  dogBreed: { ...typography.body, color: colors.primary, fontWeight: '600', marginTop: 2 },
-  dogAge: { ...typography.bodySmall, color: colors.textSecondary, marginTop: 2 },
+  dogBreed: {
+    ...typography.bodySmall, color: colors.primaryDark, fontWeight: '700', marginTop: spacing.xs,
+    backgroundColor: colors.primaryLight, paddingHorizontal: spacing.md,
+    paddingVertical: 3, borderRadius: borderRadius.full,
+  },
+  dogAge: { ...typography.bodySmall, color: colors.textSecondary, marginTop: spacing.xs },
   dogBio: {
-    ...typography.body, color: colors.text, textAlign: 'center',
-    marginTop: spacing.md, paddingHorizontal: spacing.xl,
+    ...typography.body, color: colors.textSecondary, textAlign: 'center',
+    marginTop: spacing.md, paddingHorizontal: spacing.xl, lineHeight: 22,
   },
   editBtn: {
     marginTop: spacing.lg, backgroundColor: colors.primary,
     borderRadius: borderRadius.full, paddingVertical: spacing.sm, paddingHorizontal: spacing.xl,
+    ...shadow.md,
   },
-  editBtnText: { ...typography.body, color: colors.surface, fontWeight: '700' },
+  editBtnText: { ...typography.body, color: colors.surface, fontWeight: '800' },
   accountSection: {
     width: '90%', marginTop: spacing.xl, padding: spacing.lg,
-    backgroundColor: colors.surface, borderRadius: borderRadius.md,
-    borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surface, borderRadius: borderRadius.lg,
+    borderWidth: 1.5, borderColor: colors.border, ...shadow.sm,
   },
   accountLabel: {
-    ...typography.caption, color: colors.textSecondary, fontWeight: '700',
-    letterSpacing: 1, marginBottom: spacing.sm,
+    ...typography.caption, color: colors.textLight, fontWeight: '800',
+    letterSpacing: 1.2, marginBottom: spacing.sm, textTransform: 'uppercase',
   },
-  accountName: { ...typography.body, color: colors.text, fontWeight: '600' },
+  accountName: { ...typography.body, color: colors.text, fontWeight: '700' },
   accountEmail: { ...typography.bodySmall, color: colors.textSecondary, marginBottom: spacing.md },
   signOutBtn: {
-    borderWidth: 1, borderColor: colors.error,
+    borderWidth: 1.5, borderColor: colors.error,
     borderRadius: borderRadius.md, padding: spacing.sm, alignItems: 'center',
   },
-  signOutText: { ...typography.body, color: colors.error, fontWeight: '600' },
+  signOutText: { ...typography.body, color: colors.error, fontWeight: '700' },
   noDog: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.xl, backgroundColor: colors.background },
-  noDogEmoji: { fontSize: 64, marginBottom: spacing.md },
+  noDogEmoji: { fontSize: 80, marginBottom: spacing.md },
   noDogTitle: { ...typography.h2, color: colors.text, marginBottom: spacing.sm },
-  noDogSubtitle: { ...typography.body, color: colors.textSecondary, marginBottom: spacing.xl },
-  addBtn: { backgroundColor: colors.primary, borderRadius: borderRadius.md, paddingVertical: spacing.md, paddingHorizontal: spacing.xl },
-  addBtnText: { ...typography.body, color: colors.surface, fontWeight: '700' },
+  noDogSubtitle: { ...typography.body, color: colors.textSecondary, marginBottom: spacing.xl, textAlign: 'center' },
+  addBtn: { backgroundColor: colors.primary, borderRadius: borderRadius.full, paddingVertical: spacing.md, paddingHorizontal: spacing.xl, ...shadow.md },
+  addBtnText: { ...typography.body, color: colors.surface, fontWeight: '800' },
 });

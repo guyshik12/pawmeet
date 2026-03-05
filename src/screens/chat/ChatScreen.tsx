@@ -8,7 +8,7 @@ import { useAuthStore } from '../../store/authStore';
 import { getMessages, sendMessage } from '../../services/chatService';
 import { supabase } from '../../lib/supabase';
 import { Message } from '../../types/database.types';
-import { colors, spacing, typography, borderRadius } from '../../constants/theme';
+import { colors, spacing, typography, borderRadius, shadow } from '../../constants/theme';
 import { format } from 'date-fns';
 
 type Props = {
@@ -143,37 +143,48 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   messagesList: { padding: spacing.md, paddingBottom: spacing.lg, flexGrow: 1, justifyContent: 'flex-end' },
   empty: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: spacing.xxl },
-  emptyEmoji: { fontSize: 40, marginBottom: spacing.sm },
+  emptyEmoji: { fontSize: 56, marginBottom: spacing.sm },
   emptyText: { ...typography.body, color: colors.textSecondary },
-  dateLabel: { ...typography.caption, color: colors.textLight, textAlign: 'center', marginVertical: spacing.sm },
+  dateLabel: {
+    ...typography.caption, color: colors.textLight, textAlign: 'center',
+    marginVertical: spacing.sm, fontWeight: '700',
+  },
   bubble: {
-    maxWidth: '75%', borderRadius: borderRadius.lg,
+    maxWidth: '78%', borderRadius: borderRadius.lg,
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
     marginBottom: spacing.xs,
   },
-  bubbleMe: { backgroundColor: colors.primary, alignSelf: 'flex-end', borderBottomRightRadius: 4 },
-  bubbleThem: { backgroundColor: colors.surface, alignSelf: 'flex-start', borderBottomLeftRadius: 4 },
-  bubbleText: { ...typography.body },
+  bubbleMe: {
+    backgroundColor: colors.primary, alignSelf: 'flex-end', borderBottomRightRadius: 6,
+    ...shadow.sm,
+  },
+  bubbleThem: {
+    backgroundColor: colors.surface, alignSelf: 'flex-start', borderBottomLeftRadius: 6,
+    borderWidth: 1.5, borderColor: colors.border,
+  },
+  bubbleText: { ...typography.body, lineHeight: 22 },
   bubbleTextMe: { color: colors.surface },
   bubbleTextThem: { color: colors.text },
-  bubbleTime: { ...typography.caption, marginTop: 2 },
-  bubbleTimeMe: { color: 'rgba(255,255,255,0.7)', textAlign: 'right' },
+  bubbleTime: { ...typography.caption, marginTop: 3 },
+  bubbleTimeMe: { color: 'rgba(255,255,255,0.65)', textAlign: 'right' },
   bubbleTimeThem: { color: colors.textLight },
   inputRow: {
     flexDirection: 'row', alignItems: 'flex-end',
-    padding: spacing.md, backgroundColor: colors.surface,
-    borderTopWidth: 1, borderTopColor: colors.border, gap: spacing.sm,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+    backgroundColor: colors.surface,
+    borderTopWidth: 1.5, borderTopColor: colors.border, gap: spacing.sm,
   },
   input: {
     flex: 1, backgroundColor: colors.background,
-    borderRadius: borderRadius.lg, paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm, ...typography.body, color: colors.text,
-    maxHeight: 100, borderWidth: 1, borderColor: colors.border,
+    borderRadius: borderRadius.xl, paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2, ...typography.body, color: colors.text,
+    maxHeight: 100, borderWidth: 1.5, borderColor: colors.border,
   },
   sendBtn: {
-    width: 40, height: 40, borderRadius: 20,
+    width: 44, height: 44, borderRadius: 22,
     backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center',
+    ...shadow.md,
   },
-  sendBtnDisabled: { backgroundColor: colors.disabled },
-  sendBtnText: { color: colors.surface, fontSize: 20, fontWeight: '700' },
+  sendBtnDisabled: { backgroundColor: colors.disabled, shadowOpacity: 0 },
+  sendBtnText: { color: colors.surface, fontSize: 22, fontWeight: '800' },
 });

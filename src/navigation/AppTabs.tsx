@@ -75,11 +75,19 @@ export default function AppTabs() {
       <Tab.Navigator
         screenOptions={{
           tabBarActiveTintColor: colors.primary,
-          tabBarInactiveTintColor: colors.textSecondary,
-          tabBarStyle: { borderTopColor: colors.border },
-          headerStyle: { backgroundColor: colors.surface },
+          tabBarInactiveTintColor: colors.textLight,
+          tabBarStyle: {
+            backgroundColor: colors.surface,
+            borderTopColor: colors.border,
+            paddingTop: 6,
+            paddingBottom: 8,
+            height: 64,
+          },
+          tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+          headerStyle: { backgroundColor: colors.background },
+          headerShadowVisible: false,
           headerTintColor: colors.text,
-          headerTitleStyle: { fontWeight: '700' },
+          headerTitleStyle: { fontWeight: '800', fontSize: 20, color: colors.text },
         }}
       >
         <Tab.Screen
