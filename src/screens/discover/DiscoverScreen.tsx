@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator,
   TouchableOpacity, Image, Alert, RefreshControl,
@@ -9,6 +9,7 @@ import {
   requestLocationPermission, getCurrentLocation,
   upsertLocation, fetchNearbyUsers, NearbyUser,
 } from '../../services/locationService';
+import { sendFriendRequest, getMyRequestStatuses } from '../../services/friendService';
 import { distanceKm, formatDistance } from '../../utils/distanceCalc';
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 
@@ -20,7 +21,6 @@ export default function DiscoverScreen() {
   const [myLocation, setMyLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
 
-  // Get location on mount
   useEffect(() => {
     (async () => {
       const granted = await requestLocationPermission();
@@ -45,6 +45,18 @@ export default function DiscoverScreen() {
     queryKey: ['nearby', user?.id],
     queryFn: () => fetchNearbyUsers(user!.id),
     enabled: !!user && !!myLocation,
+  });
+
+  const { data: requestStatuses = {} } = useQuery({
+    queryKey: ['my_requests', user?.id],
+    queryFn: () => getMyRequestStatuses(user!.id),
+    enabled: !!user,
+  });
+
+  const sayHiMutation = useMutation({
+    mutationFn: (receiverId: string) => sendFriendRequest(user!.id, receiverId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['my_requests'] }),
+    onError: (e: any) => Alert.alert('Error', e.message),
   });
 
   const sorted: NearbyWithDistance[] = myLocation
@@ -79,9 +91,9 @@ export default function DiscoverScreen() {
       contentContainerStyle={sorted.length === 0 ? styles.emptyContainer : styles.list}
       refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.primary} />}
       ListHeaderComponent={
-        <Text style={styles.header}>
-          {sorted.length > 0 ? `${sorted.length} dog${sorted.length !== 1 ? 's' : ''} nearby` : ''}
-        </Text>
+        sorted.length > 0 ? (
+          <Text style={styles.header}>{sorted.length} dog{sorted.length !== 1 ? 's' : ''} nearby</Text>
+        ) : null
       }
       ListEmptyComponent={
         <View style={styles.empty}>
@@ -90,17 +102,45 @@ export default function DiscoverScreen() {
           <Text style={styles.emptySubtitle}>Be the first! Tell your friends to join PawMeet.</Text>
         </View>
       }
-      renderItem={({ item }) => <NearbyCard item={item} />}
+      renderItem={({ item }) => {
+        const status = requestStatuses[item.owner_id];
+        return (
+          <NearbyCard
+            item={item}
+            requestStatus={status}
+            onSayHi={() => sayHiMutation.mutate(item.owner_id)}
+          />
+        );
+      }}
     />
   );
 }
 
-function NearbyCard({ item }: { item: NearbyWithDistance }) {
+function NearbyCard({
+  item, requestStatus, onSayHi,
+}: {
+  item: NearbyWithDistance;
+  requestStatus?: 'pending' | 'accepted' | 'declined';
+  onSayHi: () => void;
+}) {
   const firstDog = item.dogs[0];
+
+  const renderButton = () => {
+    if (requestStatus === 'accepted') {
+      return <View style={styles.friendBadge}><Text style={styles.friendBadgeText}>Friends 🐾</Text></View>;
+    }
+    if (requestStatus === 'pending') {
+      return <View style={styles.pendingBadge}><Text style={styles.pendingBadgeText}>Sent 👋</Text></View>;
+    }
+    return (
+      <TouchableOpacity style={styles.sayHiBtn} onPress={onSayHi}>
+        <Text style={styles.sayHiText}>Say Hi 👋</Text>
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={styles.card}>
-      {/* Dog photo */}
       {firstDog?.photo_url ? (
         <Image source={{ uri: firstDog.photo_url }} style={styles.dogPhoto} />
       ) : (
@@ -108,21 +148,18 @@ function NearbyCard({ item }: { item: NearbyWithDistance }) {
           <Text style={{ fontSize: 28 }}>🐶</Text>
         </View>
       )}
-
       <View style={styles.cardBody}>
         <View style={styles.cardTop}>
           <Text style={styles.dogName}>{firstDog?.name ?? '?'}</Text>
           <Text style={styles.distance}>{formatDistance(item.distance)}</Text>
         </View>
-
         {firstDog?.breed ? <Text style={styles.dogMeta}>{firstDog.breed}</Text> : null}
         {firstDog?.age_years ? <Text style={styles.dogMeta}>{firstDog.age_years} yrs</Text> : null}
-
         {item.dogs.length > 1 && (
           <Text style={styles.moreDogs}>+{item.dogs.length - 1} more dog{item.dogs.length - 1 !== 1 ? 's' : ''}</Text>
         )}
-
         <Text style={styles.ownerName}>Owner: {item.profile.name}</Text>
+        <View style={styles.btnRow}>{renderButton()}</View>
       </View>
     </View>
   );
@@ -142,7 +179,7 @@ const styles = StyleSheet.create({
   emptyTitle: { ...typography.h2, color: colors.text, marginBottom: spacing.sm },
   emptySubtitle: { ...typography.body, color: colors.textSecondary, textAlign: 'center' },
   card: {
-    flexDirection: 'row', alignItems: 'center',
+    flexDirection: 'row', alignItems: 'flex-start',
     backgroundColor: colors.surface, borderRadius: borderRadius.md,
     padding: spacing.md, marginBottom: spacing.md,
     shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4,
@@ -160,4 +197,20 @@ const styles = StyleSheet.create({
   dogMeta: { ...typography.bodySmall, color: colors.textSecondary },
   moreDogs: { ...typography.caption, color: colors.primary, marginTop: 2 },
   ownerName: { ...typography.caption, color: colors.textLight, marginTop: spacing.xs },
+  btnRow: { marginTop: spacing.sm },
+  sayHiBtn: {
+    backgroundColor: colors.primary, borderRadius: borderRadius.full,
+    paddingVertical: spacing.xs, paddingHorizontal: spacing.md, alignSelf: 'flex-start',
+  },
+  sayHiText: { ...typography.bodySmall, color: colors.surface, fontWeight: '700' },
+  pendingBadge: {
+    backgroundColor: colors.border, borderRadius: borderRadius.full,
+    paddingVertical: spacing.xs, paddingHorizontal: spacing.md, alignSelf: 'flex-start',
+  },
+  pendingBadgeText: { ...typography.bodySmall, color: colors.textSecondary },
+  friendBadge: {
+    backgroundColor: '#E6F9F5', borderRadius: borderRadius.full,
+    paddingVertical: spacing.xs, paddingHorizontal: spacing.md, alignSelf: 'flex-start',
+  },
+  friendBadgeText: { ...typography.bodySmall, color: colors.secondary, fontWeight: '700' },
 });
