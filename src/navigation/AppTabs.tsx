@@ -6,7 +6,6 @@ import { colors } from '../constants/theme';
 import { Text, TouchableOpacity, Image } from 'react-native';
 import DiscoverScreen from '../screens/discover/DiscoverScreen';
 import FriendsScreen from '../screens/friends/FriendsScreen';
-import WalksScreen from '../screens/walks/WalksScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
 import ChatScreen from '../screens/chat/ChatScreen';
 import DogPickerModal from '../components/DogPickerModal';
@@ -38,7 +37,6 @@ const DogTabIcon = ({ photoUrl, focused }: { photoUrl: string | null; focused: b
 export type AppTabsParamList = {
   [Routes.Discover]: undefined;
   FriendsStack: undefined;
-  [Routes.Walks]: undefined;
   [Routes.Profile]: undefined;
 };
 
@@ -93,11 +91,6 @@ export default function AppTabs() {
           name="FriendsStack"
           component={FriendsNavigator}
           options={{ headerShown: false, title: 'Friends', tabBarIcon: ({ focused }) => <TabIcon emoji="🐶" focused={focused} /> }}
-        />
-        <Tab.Screen
-          name={Routes.Walks}
-          component={WalksScreen}
-          options={{ title: 'Walks', tabBarIcon: ({ focused }) => <TabIcon emoji="📅" focused={focused} /> }}
         />
         <Tab.Screen
           name={Routes.Profile}

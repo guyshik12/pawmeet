@@ -8,6 +8,8 @@ import { useAuthStore } from '../../store/authStore';
 import { getIncomingRequests, getFriends, respondToRequest } from '../../services/friendService';
 import { supabase } from '../../lib/supabase';
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
+import Toast from '../../components/ui/Toast';
+import { useToast } from '../../hooks/useToast';
 
 type Tab = 'friends' | 'requests';
 
@@ -15,6 +17,7 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<Tab>('friends');
+  const { toast, showToast, hideToast } = useToast();
 
   const { data: requests = [], isLoading: reqLoading, refetch: refetchReqs, isRefetching: reqRefetching } = useQuery({
     queryKey: ['friend_requests', user?.id],
@@ -31,10 +34,12 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
   const respondMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: 'accepted' | 'declined' }) =>
       respondToRequest(id, status),
-    onSuccess: () => {
+    onSuccess: (_, { status }) => {
       queryClient.invalidateQueries({ queryKey: ['friend_requests'] });
       queryClient.invalidateQueries({ queryKey: ['friends'] });
+      showToast(status === 'accepted' ? 'New dog friend! 🐾' : 'Request declined', status === 'accepted' ? 'success' : 'info');
     },
+    onError: () => showToast('Something went wrong. Try again.', 'error'),
   });
 
   // Realtime subscription
@@ -176,6 +181,7 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
           />
         )
       )}
+      <Toast message={toast.message} type={toast.type} visible={toast.visible} onHide={hideToast} />
     </View>
   );
 }

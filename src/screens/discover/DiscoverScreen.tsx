@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, ActivityIndicator,
-  TouchableOpacity, Image, Alert, RefreshControl,
+  TouchableOpacity, Image, RefreshControl,
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
@@ -12,6 +12,8 @@ import {
 import { sendFriendRequest, getMyRequestStatuses } from '../../services/friendService';
 import { distanceKm, formatDistance } from '../../utils/distanceCalc';
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
+import Toast from '../../components/ui/Toast';
+import { useToast } from '../../hooks/useToast';
 
 type NearbyWithDistance = NearbyUser & { distance: number };
 
@@ -20,6 +22,7 @@ export default function DiscoverScreen() {
   const queryClient = useQueryClient();
   const [myLocation, setMyLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const { toast, showToast, hideToast } = useToast();
 
   useEffect(() => {
     (async () => {
@@ -55,8 +58,11 @@ export default function DiscoverScreen() {
 
   const sayHiMutation = useMutation({
     mutationFn: (receiverId: string) => sendFriendRequest(user!.id, receiverId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['my_requests'] }),
-    onError: (e: any) => Alert.alert('Error', e.message),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my_requests'] });
+      showToast('Friend request sent! 👋', 'success');
+    },
+    onError: () => showToast('Could not send request. Try again.', 'error'),
   });
 
   const sorted: NearbyWithDistance[] = myLocation
@@ -85,6 +91,7 @@ export default function DiscoverScreen() {
   }
 
   return (
+    <View style={{ flex: 1 }}>
     <FlatList
       data={sorted}
       keyExtractor={(item) => item.owner_id}
@@ -113,6 +120,8 @@ export default function DiscoverScreen() {
         );
       }}
     />
+    <Toast message={toast.message} type={toast.type} visible={toast.visible} onHide={hideToast} />
+    </View>
   );
 }
 
