@@ -11,7 +11,7 @@ import { colors, spacing, typography, borderRadius } from '../../constants/theme
 
 type Tab = 'friends' | 'requests';
 
-export default function FriendsScreen() {
+export default function FriendsScreen({ navigation }: { navigation: any }) {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<Tab>('friends');
@@ -112,6 +112,16 @@ export default function FriendsScreen() {
                     {dog?.breed ? <Text style={styles.meta}>{dog.breed}</Text> : null}
                     <Text style={styles.ownerName}>Owner: {item.friend.name}</Text>
                   </View>
+                  <TouchableOpacity
+                    style={styles.chatBtn}
+                    onPress={() => navigation.navigate('Chat', {
+                      friendshipId: item.id,
+                      friendName: item.friend.name,
+                      friendDogName: dog?.name ?? item.friend.name,
+                    })}
+                  >
+                    <Text style={styles.chatBtnText}>💬</Text>
+                  </TouchableOpacity>
                 </View>
               );
             }}
@@ -219,4 +229,9 @@ const styles = StyleSheet.create({
     width: 36, height: 36, justifyContent: 'center', alignItems: 'center',
   },
   declineText: { color: colors.error, fontWeight: '700', fontSize: 16 },
+  chatBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center',
+  },
+  chatBtnText: { fontSize: 20 },
 });

@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Routes } from '../constants/routes';
 import { colors } from '../constants/theme';
-import { Text, TouchableOpacity, Image, View } from 'react-native';
+import { Text, TouchableOpacity, Image } from 'react-native';
 import DiscoverScreen from '../screens/discover/DiscoverScreen';
 import FriendsScreen from '../screens/friends/FriendsScreen';
 import WalksScreen from '../screens/walks/WalksScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
+import ChatScreen from '../screens/chat/ChatScreen';
 import DogPickerModal from '../components/DogPickerModal';
 import AddEditDogModal from '../screens/dogs/AddEditDogModal';
 import { useQueryClient } from '@tanstack/react-query';
@@ -35,12 +37,33 @@ const DogTabIcon = ({ photoUrl, focused }: { photoUrl: string | null; focused: b
 
 export type AppTabsParamList = {
   [Routes.Discover]: undefined;
-  [Routes.Friends]: undefined;
+  FriendsStack: undefined;
   [Routes.Walks]: undefined;
   [Routes.Profile]: undefined;
 };
 
+export type FriendsStackParamList = {
+  [Routes.Friends]: undefined;
+  [Routes.Chat]: { friendshipId: string; friendName: string; friendDogName: string };
+};
+
 const Tab = createBottomTabNavigator<AppTabsParamList>();
+const FriendsStack = createNativeStackNavigator<FriendsStackParamList>();
+
+function FriendsNavigator() {
+  return (
+    <FriendsStack.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: colors.surface },
+        headerTintColor: colors.text,
+        headerTitleStyle: { fontWeight: '700' },
+      }}
+    >
+      <FriendsStack.Screen name={Routes.Friends} component={FriendsScreen} options={{ title: 'Friends' }} />
+      <FriendsStack.Screen name={Routes.Chat} component={ChatScreen} />
+    </FriendsStack.Navigator>
+  );
+}
 
 export default function AppTabs() {
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -67,9 +90,9 @@ export default function AppTabs() {
           options={{ title: 'Discover', tabBarIcon: ({ focused }) => <TabIcon emoji="🐾" focused={focused} /> }}
         />
         <Tab.Screen
-          name={Routes.Friends}
-          component={FriendsScreen}
-          options={{ title: 'Friends', tabBarIcon: ({ focused }) => <TabIcon emoji="🐶" focused={focused} /> }}
+          name="FriendsStack"
+          component={FriendsNavigator}
+          options={{ headerShown: false, title: 'Friends', tabBarIcon: ({ focused }) => <TabIcon emoji="🐶" focused={focused} /> }}
         />
         <Tab.Screen
           name={Routes.Walks}
@@ -98,7 +121,6 @@ export default function AppTabs() {
         onClose={() => setPickerVisible(false)}
         onAddDog={() => setAddDogVisible(true)}
       />
-
       <AddEditDogModal
         visible={addDogVisible}
         dog={null}
