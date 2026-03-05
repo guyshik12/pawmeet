@@ -1,75 +1,47 @@
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  Alert, ScrollView, Image, ActivityIndicator, FlatList,
+  View, Text, TouchableOpacity, StyleSheet, Alert,
+  ScrollView, Image, ActivityIndicator, FlatList,
 } from 'react-native';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 import { useAuthStore } from '../../store/authStore';
-import { getProfile, updateProfile } from '../../services/profileService';
+import { useDogStore } from '../../store/dogStore';
 import { getDogs, deleteDog } from '../../services/dogService';
 import { pickAndUploadImage } from '../../utils/imageUpload';
+import { updateDog } from '../../services/dogService';
 import { Dog } from '../../types/database.types';
 import AddEditDogModal from '../dogs/AddEditDogModal';
 
-type Tab = 'profile' | 'dogs';
-
 export default function ProfileScreen() {
-  const { user, profile, setProfile } = useAuthStore();
+  const { user, profile } = useAuthStore();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<Tab>('profile');
-  const [name, setName] = useState(profile?.name ?? '');
-  const [bio, setBio] = useState(profile?.bio ?? '');
-  const [saving, setSaving] = useState(false);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const { dogs, currentDogId, setDogs, setCurrentDogId, currentDog } = useDogStore();
   const [modalVisible, setModalVisible] = useState(false);
   const [editingDog, setEditingDog] = useState<Dog | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
-  useEffect(() => {
-    if (!profile && user) {
-      getProfile(user.id).then((p) => { if (p) setProfile(p); });
-    }
-  }, [user]);
-
-  useEffect(() => {
-    setName(profile?.name ?? '');
-    setBio(profile?.bio ?? '');
-  }, [profile]);
-
-  const { data: dogs = [], isLoading: dogsLoading } = useQuery({
+  const { isLoading } = useQuery({
     queryKey: ['dogs', user?.id],
-    queryFn: () => getDogs(user!.id),
+    queryFn: async () => {
+      const data = await getDogs(user!.id);
+      setDogs(data);
+      return data;
+    },
     enabled: !!user,
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: deleteDog,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['dogs'] }),
-  });
+  const dog = currentDog();
 
-  const handleSave = async () => {
-    if (!user || !name.trim()) return;
-    setSaving(true);
-    try {
-      const updated = await updateProfile(user.id, { name: name.trim(), bio: bio.trim() });
-      setProfile(updated);
-      Alert.alert('Saved', 'Profile updated!');
-    } catch (e: any) {
-      Alert.alert('Error', e.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handlePickPhoto = async () => {
-    if (!user) return;
+  const handlePickDogPhoto = async () => {
+    if (!dog) return;
     setUploadingPhoto(true);
     try {
-      const url = await pickAndUploadImage('avatars', user.id);
+      const url = await pickAndUploadImage('dog-photos', `dog-${dog.id}`);
       if (url) {
-        const updated = await updateProfile(user.id, { photo_url: url });
-        setProfile(updated);
+        await updateDog(dog.id, { photo_url: url });
+        queryClient.invalidateQueries({ queryKey: ['dogs'] });
       }
     } catch (e: any) {
       Alert.alert('Upload Error', e.message);
@@ -78,131 +50,134 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleDeleteDog = (dog: Dog) => {
-    Alert.alert('Delete Dog', `Remove ${dog.name}?`, [
+  const handleDeleteDog = () => {
+    if (!dog) return;
+    Alert.alert('Remove Dog', `Remove ${dog.name} from your profile?`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteMutation.mutate(dog.id) },
+      {
+        text: 'Remove', style: 'destructive',
+        onPress: async () => {
+          await deleteDog(dog.id);
+          queryClient.invalidateQueries({ queryKey: ['dogs'] });
+        },
+      },
     ]);
   };
 
-  const openAddDog = () => { setEditingDog(null); setModalVisible(true); };
-  const openEditDog = (dog: Dog) => { setEditingDog(dog); setModalVisible(true); };
+  const openEdit = () => { setEditingDog(dog); setModalVisible(true); };
+  const openAdd = () => { setEditingDog(null); setModalVisible(true); };
+
+  if (isLoading) {
+    return <View style={styles.center}><ActivityIndicator size="large" color={colors.primary} /></View>;
+  }
 
   return (
-    <View style={styles.container}>
-      {/* Segment Control */}
-      <View style={styles.segmentRow}>
-        <TouchableOpacity
-          style={[styles.segment, activeTab === 'profile' && styles.segmentActive]}
-          onPress={() => setActiveTab('profile')}
-        >
-          <Text style={[styles.segmentText, activeTab === 'profile' && styles.segmentTextActive]}>Profile</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.segment, activeTab === 'dogs' && styles.segmentActive]}
-          onPress={() => setActiveTab('dogs')}
-        >
-          <Text style={[styles.segmentText, activeTab === 'dogs' && styles.segmentTextActive]}>
-            My Dogs {dogs.length > 0 ? `(${dogs.length})` : ''}
-          </Text>
-        </TouchableOpacity>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+
+      {/* Dog Switcher */}
+      <View style={styles.switcherSection}>
+        <FlatList
+          data={[...dogs, null] as (Dog | null)[]}
+          keyExtractor={(item) => item?.id ?? 'add'}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.switcherList}
+          renderItem={({ item }) => {
+            if (!item) {
+              // "+ Add" button
+              return (
+                <TouchableOpacity style={styles.addDogChip} onPress={openAdd}>
+                  <Text style={styles.addDogChipText}>+ Add</Text>
+                </TouchableOpacity>
+              );
+            }
+            const isActive = item.id === currentDogId;
+            return (
+              <TouchableOpacity
+                style={[styles.dogChip, isActive && styles.dogChipActive]}
+                onPress={() => setCurrentDogId(item.id)}
+              >
+                {item.photo_url ? (
+                  <Image source={{ uri: item.photo_url }} style={styles.chipAvatar} />
+                ) : (
+                  <View style={styles.chipAvatarPlaceholder}>
+                    <Text style={{ fontSize: 14 }}>🐶</Text>
+                  </View>
+                )}
+                <Text style={[styles.chipName, isActive && styles.chipNameActive]} numberOfLines={1}>
+                  {item.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          }}
+        />
       </View>
 
-      {activeTab === 'profile' ? (
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          {/* Avatar */}
-          <TouchableOpacity style={styles.avatarContainer} onPress={handlePickPhoto} disabled={uploadingPhoto}>
-            {profile?.photo_url ? (
-              <Image source={{ uri: profile.photo_url }} style={styles.avatar} />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Text style={styles.avatarEmoji}>👤</Text>
+      {dog ? (
+        <>
+          {/* Dog Identity Card */}
+          <View style={styles.dogCard}>
+            <TouchableOpacity onPress={handlePickDogPhoto} disabled={uploadingPhoto}>
+              {dog.photo_url ? (
+                <Image source={{ uri: dog.photo_url }} style={styles.dogPhoto} />
+              ) : (
+                <View style={styles.dogPhotoPlaceholder}>
+                  <Text style={{ fontSize: 48 }}>🐶</Text>
+                </View>
+              )}
+              {uploadingPhoto && (
+                <View style={styles.photoOverlay}>
+                  <ActivityIndicator color={colors.surface} />
+                </View>
+              )}
+              <View style={styles.cameraHint}>
+                <Text style={styles.cameraHintText}>📷</Text>
               </View>
-            )}
-            {uploadingPhoto && (
-              <View style={styles.avatarOverlay}>
-                <ActivityIndicator color={colors.surface} />
-              </View>
-            )}
-            <Text style={styles.changePhoto}>Change Photo</Text>
+            </TouchableOpacity>
+
+            <Text style={styles.dogName}>{dog.name}</Text>
+            {dog.breed ? <Text style={styles.dogBreed}>{dog.breed}</Text> : null}
+            {dog.age_years ? <Text style={styles.dogAge}>{dog.age_years} years old</Text> : null}
+            {dog.bio ? <Text style={styles.dogBio}>{dog.bio}</Text> : null}
+
+            <View style={styles.dogActions}>
+              <TouchableOpacity style={styles.editBtn} onPress={openEdit}>
+                <Text style={styles.editBtnText}>Edit Profile</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.deleteBtn} onPress={handleDeleteDog}>
+                <Text style={styles.deleteBtnText}>Remove</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </>
+      ) : (
+        <View style={styles.noDog}>
+          <Text style={{ fontSize: 56, marginBottom: spacing.md }}>🦴</Text>
+          <Text style={styles.noDogTitle}>No dogs yet</Text>
+          <Text style={styles.noDogSubtitle}>Add your dog to get started!</Text>
+          <TouchableOpacity style={styles.addFirstDogBtn} onPress={openAdd}>
+            <Text style={styles.addFirstDogText}>+ Add My Dog</Text>
           </TouchableOpacity>
+        </View>
+      )}
 
-          <Text style={styles.email}>{user?.email}</Text>
-
-          <Text style={styles.label}>Name *</Text>
-          <TextInput
-            style={styles.input} value={name} onChangeText={setName}
-            placeholder="Your name" placeholderTextColor={colors.textLight} autoCapitalize="words"
-          />
-
-          <Text style={styles.label}>Bio</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]} value={bio} onChangeText={setBio}
-            placeholder="Tell other dog owners about yourself…" placeholderTextColor={colors.textLight}
-            multiline numberOfLines={3}
-          />
-
-          <TouchableOpacity style={[styles.button, saving && styles.buttonDisabled]} onPress={handleSave} disabled={saving}>
-            <Text style={styles.buttonText}>{saving ? 'Saving…' : 'Save Profile'}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.signOutButton} onPress={() =>
+      {/* Account Section */}
+      <View style={styles.accountSection}>
+        <Text style={styles.accountTitle}>Account</Text>
+        <Text style={styles.accountName}>{profile?.name ?? 'Dog Owner'}</Text>
+        <Text style={styles.accountEmail}>{user?.email}</Text>
+        <TouchableOpacity
+          style={styles.signOutButton}
+          onPress={() =>
             Alert.alert('Sign Out', 'Are you sure?', [
               { text: 'Cancel', style: 'cancel' },
               { text: 'Sign Out', style: 'destructive', onPress: () => supabase.auth.signOut() },
             ])
-          }>
-            <Text style={styles.signOutText}>Sign Out</Text>
-          </TouchableOpacity>
-        </ScrollView>
-      ) : (
-        <View style={{ flex: 1 }}>
-          {dogsLoading ? (
-            <View style={styles.center}><ActivityIndicator size="large" color={colors.primary} /></View>
-          ) : (
-            <FlatList
-              data={dogs}
-              keyExtractor={(d) => d.id}
-              contentContainerStyle={dogs.length === 0 ? styles.emptyContainer : styles.list}
-              ListEmptyComponent={
-                <View style={styles.empty}>
-                  <Text style={{ fontSize: 56, marginBottom: spacing.md }}>🦴</Text>
-                  <Text style={styles.emptyTitle}>No dogs yet</Text>
-                  <Text style={styles.emptySubtitle}>Tap below to add your first dog!</Text>
-                </View>
-              }
-              renderItem={({ item }) => (
-                <View style={styles.card}>
-                  {item.photo_url ? (
-                    <Image source={{ uri: item.photo_url }} style={styles.dogPhoto} />
-                  ) : (
-                    <View style={styles.dogPhotoPlaceholder}>
-                      <Text style={{ fontSize: 28 }}>🐶</Text>
-                    </View>
-                  )}
-                  <View style={styles.dogInfo}>
-                    <Text style={styles.dogName}>{item.name}</Text>
-                    {item.breed ? <Text style={styles.dogMeta}>{item.breed}</Text> : null}
-                    {item.age_years ? <Text style={styles.dogMeta}>{item.age_years} yrs</Text> : null}
-                    {item.bio ? <Text style={styles.dogBio} numberOfLines={2}>{item.bio}</Text> : null}
-                  </View>
-                  <View style={styles.cardActions}>
-                    <TouchableOpacity onPress={() => openEditDog(item)} style={styles.editBtn}>
-                      <Text style={styles.editBtnText}>Edit</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => handleDeleteDog(item)} style={styles.deleteBtn}>
-                      <Text style={styles.deleteBtnText}>✕</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              )}
-            />
-          )}
-          <TouchableOpacity style={styles.fab} onPress={openAddDog}>
-            <Text style={styles.fabText}>+ Add Dog</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+          }
+        >
+          <Text style={styles.signOutText}>Sign Out</Text>
+        </TouchableOpacity>
+      </View>
 
       <AddEditDogModal
         visible={modalVisible}
@@ -213,89 +188,93 @@ export default function ProfileScreen() {
           queryClient.invalidateQueries({ queryKey: ['dogs'] });
         }}
       />
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  segmentRow: {
-    flexDirection: 'row', backgroundColor: colors.surface,
-    borderBottomWidth: 1, borderBottomColor: colors.border,
-  },
-  segment: { flex: 1, paddingVertical: spacing.md, alignItems: 'center' },
-  segmentActive: { borderBottomWidth: 2, borderBottomColor: colors.primary },
-  segmentText: { ...typography.body, color: colors.textSecondary },
-  segmentTextActive: { color: colors.primary, fontWeight: '700' },
-  content: { padding: spacing.lg },
+  content: { paddingBottom: spacing.xxl },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  avatarContainer: { alignItems: 'center', marginBottom: spacing.md },
-  avatar: { width: 96, height: 96, borderRadius: 48 },
-  avatarPlaceholder: {
-    width: 96, height: 96, borderRadius: 48,
+
+  // Dog switcher
+  switcherSection: { backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border },
+  switcherList: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: spacing.sm },
+  dogChip: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full, borderWidth: 2, borderColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  dogChipActive: { borderColor: colors.primary, backgroundColor: '#FEF3EC' },
+  chipAvatar: { width: 28, height: 28, borderRadius: 14 },
+  chipAvatarPlaceholder: {
+    width: 28, height: 28, borderRadius: 14,
     backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center',
   },
-  avatarEmoji: { fontSize: 40 },
-  avatarOverlay: {
+  chipName: { ...typography.bodySmall, color: colors.textSecondary, maxWidth: 80 },
+  chipNameActive: { color: colors.primary, fontWeight: '700' },
+  addDogChip: {
+    paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full, borderWidth: 2, borderColor: colors.primary,
+    borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center',
+  },
+  addDogChipText: { ...typography.bodySmall, color: colors.primary, fontWeight: '700' },
+
+  // Dog card
+  dogCard: { alignItems: 'center', padding: spacing.xl },
+  dogPhoto: { width: 120, height: 120, borderRadius: 60 },
+  dogPhotoPlaceholder: {
+    width: 120, height: 120, borderRadius: 60,
+    backgroundColor: colors.border, justifyContent: 'center', alignItems: 'center',
+  },
+  photoOverlay: {
     ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)',
-    borderRadius: 48, justifyContent: 'center', alignItems: 'center',
+    borderRadius: 60, justifyContent: 'center', alignItems: 'center',
   },
-  changePhoto: { ...typography.bodySmall, color: colors.primary, marginTop: spacing.xs },
-  email: { ...typography.bodySmall, color: colors.textSecondary, textAlign: 'center', marginBottom: spacing.lg },
-  label: { ...typography.bodySmall, color: colors.textSecondary, marginBottom: spacing.xs, fontWeight: '600' },
-  input: {
-    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
-    borderRadius: borderRadius.md, padding: spacing.md, marginBottom: spacing.md,
-    ...typography.body, color: colors.text,
+  cameraHint: {
+    position: 'absolute', bottom: 4, right: 4,
+    backgroundColor: colors.surface, borderRadius: 12, padding: 4,
   },
-  textArea: { height: 80, textAlignVertical: 'top' },
-  button: {
+  cameraHintText: { fontSize: 14 },
+  dogName: { ...typography.h1, color: colors.text, marginTop: spacing.md },
+  dogBreed: { ...typography.body, color: colors.primary, fontWeight: '600', marginTop: 2 },
+  dogAge: { ...typography.bodySmall, color: colors.textSecondary, marginTop: 2 },
+  dogBio: { ...typography.body, color: colors.text, textAlign: 'center', marginTop: spacing.md, paddingHorizontal: spacing.lg },
+  dogActions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg },
+  editBtn: {
     backgroundColor: colors.primary, borderRadius: borderRadius.md,
-    padding: spacing.md, alignItems: 'center', marginBottom: spacing.md,
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.lg,
   },
-  buttonDisabled: { opacity: 0.6 },
-  buttonText: { ...typography.body, color: colors.surface, fontWeight: '700' },
+  editBtnText: { ...typography.body, color: colors.surface, fontWeight: '700' },
+  deleteBtn: {
+    borderWidth: 1, borderColor: colors.error, borderRadius: borderRadius.md,
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.lg,
+  },
+  deleteBtnText: { ...typography.body, color: colors.error },
+
+  // No dog state
+  noDog: { alignItems: 'center', padding: spacing.xxl },
+  noDogTitle: { ...typography.h2, color: colors.text, marginBottom: spacing.sm },
+  noDogSubtitle: { ...typography.body, color: colors.textSecondary, marginBottom: spacing.xl },
+  addFirstDogBtn: {
+    backgroundColor: colors.primary, borderRadius: borderRadius.md,
+    paddingVertical: spacing.md, paddingHorizontal: spacing.xl,
+  },
+  addFirstDogText: { ...typography.body, color: colors.surface, fontWeight: '700' },
+
+  // Account section
+  accountSection: {
+    margin: spacing.lg, padding: spacing.lg,
+    backgroundColor: colors.surface, borderRadius: borderRadius.md,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  accountTitle: { ...typography.bodySmall, color: colors.textSecondary, fontWeight: '700', marginBottom: spacing.sm, textTransform: 'uppercase', letterSpacing: 0.5 },
+  accountName: { ...typography.body, color: colors.text, fontWeight: '600' },
+  accountEmail: { ...typography.bodySmall, color: colors.textSecondary, marginBottom: spacing.md },
   signOutButton: {
     borderWidth: 1, borderColor: colors.error, borderRadius: borderRadius.md,
-    padding: spacing.md, alignItems: 'center',
+    padding: spacing.sm, alignItems: 'center',
   },
   signOutText: { ...typography.body, color: colors.error, fontWeight: '600' },
-  list: { padding: spacing.md, paddingBottom: 100 },
-  emptyContainer: { flex: 1 },
-  empty: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.xl },
-  emptyTitle: { ...typography.h2, color: colors.text, marginBottom: spacing.sm },
-  emptySubtitle: { ...typography.body, color: colors.textSecondary, textAlign: 'center' },
-  card: {
-    backgroundColor: colors.surface, borderRadius: borderRadius.md,
-    padding: spacing.md, marginBottom: spacing.md,
-    flexDirection: 'row', alignItems: 'center',
-    shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2,
-  },
-  dogPhoto: { width: 56, height: 56, borderRadius: 28, marginRight: spacing.md },
-  dogPhotoPlaceholder: {
-    width: 56, height: 56, borderRadius: 28, backgroundColor: colors.border,
-    justifyContent: 'center', alignItems: 'center', marginRight: spacing.md,
-  },
-  dogInfo: { flex: 1 },
-  dogName: { ...typography.h3, color: colors.text },
-  dogMeta: { ...typography.bodySmall, color: colors.textSecondary },
-  dogBio: { ...typography.bodySmall, color: colors.textLight, marginTop: 2 },
-  cardActions: { flexDirection: 'column', alignItems: 'center', gap: spacing.xs },
-  editBtn: {
-    backgroundColor: colors.primary, borderRadius: borderRadius.sm,
-    paddingHorizontal: spacing.sm, paddingVertical: 4,
-  },
-  editBtnText: { ...typography.caption, color: colors.surface, fontWeight: '700' },
-  deleteBtn: {
-    backgroundColor: colors.border, borderRadius: borderRadius.sm,
-    paddingHorizontal: spacing.sm, paddingVertical: 4,
-  },
-  deleteBtnText: { ...typography.caption, color: colors.error, fontWeight: '700' },
-  fab: {
-    position: 'absolute', bottom: spacing.xl, right: spacing.lg,
-    backgroundColor: colors.primary, borderRadius: borderRadius.full,
-    paddingVertical: spacing.md, paddingHorizontal: spacing.lg,
-    shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 5,
-  },
-  fabText: { ...typography.body, color: colors.surface, fontWeight: '700' },
 });
