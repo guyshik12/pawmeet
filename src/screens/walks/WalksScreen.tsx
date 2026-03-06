@@ -580,6 +580,7 @@ export default function WalksScreen() {
           <Marker
             coordinate={{ latitude: myLocation.lat, longitude: myLocation.lng }}
             anchor={{ x: 0.5, y: 0.5 }}
+            zIndex={3}
           >
             <View style={styles.myMarkerOuter}>
               <View style={styles.myMarkerInner}>
@@ -605,15 +606,21 @@ export default function WalksScreen() {
             anchor={{ x: 0.5, y: 0.5 }}
             tracksViewChanges={false}
             image={DOG_PARK_PIN}
+            zIndex={1}
           />
         ))}
 
-        {/* Other dogs */}
-        {tripDogs.map((td) => (
+        {/* Other dogs — filtered to radius, always above parks */}
+        {tripDogs
+          .filter((td) => myLocation
+            ? haversineKm(myLocation.lat, myLocation.lng, td.lat, td.lng) <= PARK_RADIUS_KM
+            : true)
+          .map((td) => (
           <Marker
             key={td.owner_id}
             coordinate={{ latitude: td.lat, longitude: td.lng }}
             anchor={{ x: 0.5, y: 1 }}
+            zIndex={2}
             onPress={() => handleMarkerPress(td)}
           >
             <View style={styles.tripMarkerWrapper}>
