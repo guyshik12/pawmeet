@@ -12,7 +12,11 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.pawmeet.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -27,8 +31,12 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-image",
       "@react-native-community/datetimepicker"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "20c4a407-2f8d-454e-8d21-9cd14d913a86"
+      }
+    }
   }
 }

@@ -6,18 +6,19 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
 import { getMessages, sendMessage } from '../../services/chatService';
+import { markFriendshipRead } from '../../services/friendService';
 import { supabase } from '../../lib/supabase';
 import { Message } from '../../types/database.types';
 import { colors, spacing, typography, borderRadius, shadow } from '../../constants/theme';
 import { format } from 'date-fns';
 
 type Props = {
-  route: { params: { friendshipId: string; friendName: string; friendDogName: string } };
+  route: { params: { friendshipId: string; friendName: string; friendDogName: string; isUserA: boolean } };
   navigation: any;
 };
 
 export default function ChatScreen({ route, navigation }: Props) {
-  const { friendshipId, friendName, friendDogName } = route.params;
+  const { friendshipId, friendName, friendDogName, isUserA } = route.params;
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const [input, setInput] = useState('');
@@ -27,6 +28,16 @@ export default function ChatScreen({ route, navigation }: Props) {
   useEffect(() => {
     navigation.setOptions({ title: friendDogName });
   }, [friendDogName]);
+
+  // Mark as read when screen opens
+  useEffect(() => {
+    if (user) {
+      markFriendshipRead(friendshipId, user.id, isUserA).then(() => {
+        queryClient.invalidateQueries({ queryKey: ['badge_count'] });
+        queryClient.invalidateQueries({ queryKey: ['unread_counts'] });
+      });
+    }
+  }, [friendshipId, user?.id]);
 
   const { data: messages = [], isLoading } = useQuery({
     queryKey: ['messages', friendshipId],

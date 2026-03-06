@@ -18,6 +18,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'com.pawmeet.app',
+    infoPlist: {
+      ITSAppUsesNonExemptEncryption: false,
+    },
   },
   android: {
     adaptiveIcon: {
@@ -32,7 +35,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     favicon: './assets/favicon.png',
   },
   plugins: [
-    'expo-image',
     '@react-native-community/datetimepicker',
     [
       'expo-location',
@@ -51,5 +53,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   extra: {
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
     supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+    eas: {
+      projectId: '20c4a407-2f8d-454e-8d21-9cd14d913a86',
+    },
   },
+  owner: 'guyshik12s-organization',
 });

@@ -11,9 +11,28 @@ export async function getProfile(userId: string): Promise<Profile | null> {
   return data;
 }
 
+export async function updateStatus(
+  userId: string,
+  status: 'active' | 'looking' | 'offline'
+): Promise<void> {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ status })
+    .eq('id', userId);
+  if (error) throw error;
+}
+
 export async function updateProfile(
   userId: string,
-  updates: { name?: string; bio?: string; photo_url?: string }
+  updates: {
+    name?: string;
+    bio?: string;
+    photo_url?: string;
+    age?: number | null;
+    occupation?: string | null;
+    neighborhood?: string | null;
+    interests?: string[] | null;
+  }
 ): Promise<Profile> {
   const { data, error } = await supabase
     .from('profiles')

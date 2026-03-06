@@ -11,8 +11,28 @@ export async function getDogs(ownerId: string): Promise<Dog[]> {
   return data ?? [];
 }
 
+type DogFields = {
+  name?: string;
+  gender?: 'Male' | 'Female' | null;
+  photos?: string[] | null;
+  breed?: string | null;
+  age_years?: number | null;
+  bio?: string | null;
+  photo_url?: string | null;
+  energy_level?: 'Puppy' | 'High Energy' | 'Medium Energy' | 'Low Energy' | 'Senior' | null;
+  size?: 'Toy' | 'Small' | 'Medium' | 'Large' | 'Giant' | null;
+  temperament?: string[] | null;
+  vaccinated?: boolean | null;
+  neutered?: boolean | null;
+  good_with_dogs?: 'Yes' | 'No' | 'Depends' | null;
+  good_with_kids?: 'Yes' | 'No' | 'Depends' | null;
+  activities?: string[] | null;
+  training_level?: 'Untrained' | 'Basic' | 'Well-trained' | 'Professional' | null;
+  prompts?: { question: string; answer: string }[] | null;
+};
+
 export async function createDog(
-  dog: { owner_id: string; name: string; breed?: string; age_years?: number; bio?: string; photo_url?: string }
+  dog: { owner_id: string } & DogFields
 ): Promise<Dog> {
   const { data, error } = await supabase
     .from('dogs')
@@ -25,7 +45,7 @@ export async function createDog(
 
 export async function updateDog(
   id: string,
-  updates: { name?: string; breed?: string; age_years?: number; bio?: string; photo_url?: string }
+  updates: DogFields
 ): Promise<Dog> {
   const { data, error } = await supabase
     .from('dogs')

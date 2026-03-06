@@ -12,6 +12,7 @@ export const Routes = {
 
   // Sub-screens
   Chat: 'Chat',
+  FriendProfile: 'FriendProfile',
   DogDetail: 'DogDetail',
   AddDog: 'AddDog',
   EditDog: 'EditDog',

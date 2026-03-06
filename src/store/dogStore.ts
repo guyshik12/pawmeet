@@ -4,14 +4,22 @@ import { Dog } from '../types/database.types';
 interface DogStore {
   dogs: Dog[];
   currentDogId: string | null;
+  isOnTrip: boolean;
+  lastDiscoverMatchMs: number;
   setDogs: (dogs: Dog[]) => void;
   setCurrentDogId: (id: string | null) => void;
+  setIsOnTrip: (v: boolean) => void;
+  setLastDiscoverMatchMs: (t: number) => void;
   currentDog: () => Dog | null;
 }
 
 export const useDogStore = create<DogStore>((set, get) => ({
   dogs: [],
   currentDogId: null,
+  isOnTrip: false,
+  lastDiscoverMatchMs: 0,
+  setIsOnTrip: (v) => set({ isOnTrip: v }),
+  setLastDiscoverMatchMs: (t) => set({ lastDiscoverMatchMs: t }),
   setDogs: (dogs) => {
     const current = get().currentDogId;
     // If no current dog or current dog no longer exists, default to first

@@ -10,6 +10,12 @@ export interface Database {
           bio: string | null;
           photo_url: string | null;
           created_at: string;
+          status: 'active' | 'looking' | 'offline';
+          verified: boolean;
+          age: number | null;
+          occupation: string | null;
+          neighborhood: string | null;
+          interests: string[] | null;
         };
         Insert: {
           id: string;
@@ -17,6 +23,12 @@ export interface Database {
           bio?: string | null;
           photo_url?: string | null;
           created_at?: string;
+          status?: 'active' | 'looking' | 'offline';
+          verified?: boolean;
+          age?: number | null;
+          occupation?: string | null;
+          neighborhood?: string | null;
+          interests?: string[] | null;
         };
         Update: {
           id?: string;
@@ -24,6 +36,12 @@ export interface Database {
           bio?: string | null;
           photo_url?: string | null;
           created_at?: string;
+          status?: 'active' | 'looking' | 'offline';
+          verified?: boolean;
+          age?: number | null;
+          occupation?: string | null;
+          neighborhood?: string | null;
+          interests?: string[] | null;
         };
       };
       dogs: {
@@ -36,6 +54,18 @@ export interface Database {
           bio: string | null;
           photo_url: string | null;
           created_at: string;
+          energy_level: 'Puppy' | 'High Energy' | 'Medium Energy' | 'Low Energy' | 'Senior' | null;
+          gender: 'Male' | 'Female' | null;
+          photos: string[] | null;
+          size: 'Toy' | 'Small' | 'Medium' | 'Large' | 'Giant' | null;
+          temperament: string[] | null;
+          vaccinated: boolean | null;
+          neutered: boolean | null;
+          good_with_dogs: 'Yes' | 'No' | 'Depends' | null;
+          good_with_kids: 'Yes' | 'No' | 'Depends' | null;
+          activities: string[] | null;
+          training_level: 'Untrained' | 'Basic' | 'Well-trained' | 'Professional' | null;
+          prompts: { question: string; answer: string }[] | null;
         };
         Insert: {
           id?: string;
@@ -46,6 +76,18 @@ export interface Database {
           bio?: string | null;
           photo_url?: string | null;
           created_at?: string;
+          gender?: 'Male' | 'Female' | null;
+          photos?: string[] | null;
+          energy_level?: 'Puppy' | 'High Energy' | 'Medium Energy' | 'Low Energy' | 'Senior' | null;
+          size?: 'Toy' | 'Small' | 'Medium' | 'Large' | 'Giant' | null;
+          temperament?: string[] | null;
+          vaccinated?: boolean | null;
+          neutered?: boolean | null;
+          good_with_dogs?: 'Yes' | 'No' | 'Depends' | null;
+          good_with_kids?: 'Yes' | 'No' | 'Depends' | null;
+          activities?: string[] | null;
+          training_level?: 'Untrained' | 'Basic' | 'Well-trained' | 'Professional' | null;
+          prompts?: { question: string; answer: string }[] | null;
         };
         Update: {
           id?: string;
@@ -56,6 +98,18 @@ export interface Database {
           bio?: string | null;
           photo_url?: string | null;
           created_at?: string;
+          gender?: 'Male' | 'Female' | null;
+          photos?: string[] | null;
+          energy_level?: 'Puppy' | 'High Energy' | 'Medium Energy' | 'Low Energy' | 'Senior' | null;
+          size?: 'Toy' | 'Small' | 'Medium' | 'Large' | 'Giant' | null;
+          temperament?: string[] | null;
+          vaccinated?: boolean | null;
+          neutered?: boolean | null;
+          good_with_dogs?: 'Yes' | 'No' | 'Depends' | null;
+          good_with_kids?: 'Yes' | 'No' | 'Depends' | null;
+          activities?: string[] | null;
+          training_level?: 'Untrained' | 'Basic' | 'Well-trained' | 'Professional' | null;
+          prompts?: { question: string; answer: string }[] | null;
         };
       };
       locations: {
@@ -83,13 +137,17 @@ export interface Database {
           id: string;
           sender_id: string;
           receiver_id: string;
+          sender_dog_id: string | null;
+          receiver_dog_id: string | null;
           status: 'pending' | 'accepted' | 'declined';
           created_at: string;
         };
         Insert: {
           id?: string;
-          sender_id: string;
-          receiver_id: string;
+          sender_id?: string;
+          receiver_id?: string;
+          sender_dog_id?: string | null;
+          receiver_dog_id?: string | null;
           status?: 'pending' | 'accepted' | 'declined';
           created_at?: string;
         };
@@ -97,6 +155,8 @@ export interface Database {
           id?: string;
           sender_id?: string;
           receiver_id?: string;
+          sender_dog_id?: string | null;
+          receiver_dog_id?: string | null;
           status?: 'pending' | 'accepted' | 'declined';
           created_at?: string;
         };
@@ -106,18 +166,30 @@ export interface Database {
           id: string;
           user_a: string;
           user_b: string;
+          dog_a: string | null;
+          dog_b: string | null;
+          user_a_last_read: string | null;
+          user_b_last_read: string | null;
           created_at: string;
         };
         Insert: {
           id?: string;
           user_a: string;
           user_b: string;
+          dog_a?: string | null;
+          dog_b?: string | null;
+          user_a_last_read?: string | null;
+          user_b_last_read?: string | null;
           created_at?: string;
         };
         Update: {
           id?: string;
           user_a?: string;
           user_b?: string;
+          dog_a?: string | null;
+          dog_b?: string | null;
+          user_a_last_read?: string | null;
+          user_b_last_read?: string | null;
           created_at?: string;
         };
       };
