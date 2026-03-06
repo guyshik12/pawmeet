@@ -29,7 +29,8 @@ import {
 } from '../../services/locationService';
 import { handleDogLike } from '../../services/friendService';
 import { supabase } from '../../lib/supabase';
-import DogParkIcon from '../../components/DogParkIcon';
+
+const DOG_PARK_PIN = require('../../../assets/dog-park-pin.png');
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -582,19 +583,16 @@ export default function WalksScreen() {
           </Marker>
         )}
 
-        {/* Dog parks */}
+        {/* Dog parks — static PNG image so the marker is a native bitmap
+            that never rescales on zoom and has no custom-children crash risk */}
         {dogParks.map((park) => (
           <Marker
             key={`park_${park.id}`}
             coordinate={{ latitude: park.lat, longitude: park.lng }}
             anchor={{ x: 0.5, y: 0.5 }}
             tracksViewChanges={false}
-            flat={false}
-          >
-            <View style={styles.parkMarker}>
-              <DogParkIcon size={20} />
-            </View>
-          </Marker>
+            image={DOG_PARK_PIN}
+          />
         ))}
 
         {/* Other dogs */}
@@ -759,16 +757,6 @@ const styles = StyleSheet.create({
   },
   tripMarkerPhoto: { width: 44, height: 44, borderRadius: 22 },
   tripMarkerFallback: { justifyContent: 'center', alignItems: 'center' },
-  parkMarker: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#1A4D2E',
-    borderWidth: 1.5,
-    borderColor: '#4CAF50',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   tripMarkerName: {
     ...typography.caption,
     color: colors.text,
