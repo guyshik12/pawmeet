@@ -31,6 +31,16 @@ import { handleDogLike } from '../../services/friendService';
 import { supabase } from '../../lib/supabase';
 
 const DOG_PARK_PIN = require('../../../assets/dog-park-pin.png');
+const PARK_RADIUS_KM = 2;
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -583,9 +593,12 @@ export default function WalksScreen() {
           </Marker>
         )}
 
-        {/* Dog parks — static PNG image so the marker is a native bitmap
-            that never rescales on zoom and has no custom-children crash risk */}
-        {dogParks.map((park) => (
+        {/* Dog parks — only those within PARK_RADIUS_KM of the user */}
+        {dogParks
+          .filter((park) => myLocation
+            ? haversineKm(myLocation.lat, myLocation.lng, park.lat, park.lng) <= PARK_RADIUS_KM
+            : false)
+          .map((park) => (
           <Marker
             key={`park_${park.id}`}
             coordinate={{ latitude: park.lat, longitude: park.lng }}
