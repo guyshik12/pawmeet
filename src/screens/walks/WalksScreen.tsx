@@ -607,12 +607,56 @@ export default function WalksScreen() {
         }
         showsUserLocation={false}
       >
-        {/* My marker */}
+        {/* Parks rendered first — JSX order puts them below dogs naturally */}
+        {dogParks
+          .filter((park) => myLocation
+            ? haversineKm(myLocation.lat, myLocation.lng, park.lat, park.lng) <= radiusKm
+            : false)
+          .map((park) => (
+            <Marker
+              key={`park_${park.id}`}
+              coordinate={{ latitude: park.lat, longitude: park.lng }}
+              anchor={{ x: 0.5, y: 0.5 }}
+              tracksViewChanges={false}
+              image={DOG_PARK_PIN}
+            />
+          ))}
+
+        {/* Other dogs — rendered after parks so they sit on top */}
+        {tripDogs
+          .filter((td) => myLocation
+            ? haversineKm(myLocation.lat, myLocation.lng, td.lat, td.lng) <= radiusKm
+            : true)
+          .map((td) => (
+            <Marker
+              key={td.owner_id}
+              coordinate={{ latitude: td.lat, longitude: td.lng }}
+              anchor={{ x: 0.5, y: 1 }}
+              onPress={() => handleMarkerPress(td)}
+            >
+              <View style={styles.tripMarkerWrapper}>
+                <View style={styles.tripMarkerBubble}>
+                  {td.dog_photo ? (
+                    <Image source={{ uri: td.dog_photo }} style={styles.tripMarkerPhoto} />
+                  ) : (
+                    <View style={styles.tripMarkerFallback}>
+                      <Text style={{ fontSize: 18 }}>🐶</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.tripMarkerName} numberOfLines={1}>
+                  {td.dog_name}
+                </Text>
+              </View>
+            </Marker>
+          ))}
+
+        {/* My marker last — always rendered on top of everything */}
         {myLocation && (
           <Marker
+            key="my-marker"
             coordinate={{ latitude: myLocation.lat, longitude: myLocation.lng }}
             anchor={{ x: 0.5, y: 0.5 }}
-            zIndex={3}
           >
             <View style={styles.myMarkerOuter}>
               <View style={styles.myMarkerInner}>
@@ -625,52 +669,6 @@ export default function WalksScreen() {
             </View>
           </Marker>
         )}
-
-        {/* Dog parks — only those within radiusKm of the user */}
-        {dogParks
-          .filter((park) => myLocation
-            ? haversineKm(myLocation.lat, myLocation.lng, park.lat, park.lng) <= radiusKm
-            : false)
-          .map((park) => (
-          <Marker
-            key={`park_${park.id}`}
-            coordinate={{ latitude: park.lat, longitude: park.lng }}
-            anchor={{ x: 0.5, y: 0.5 }}
-            tracksViewChanges={false}
-            image={DOG_PARK_PIN}
-            zIndex={1}
-          />
-        ))}
-
-        {/* Other dogs — filtered to radius, always above parks */}
-        {tripDogs
-          .filter((td) => myLocation
-            ? haversineKm(myLocation.lat, myLocation.lng, td.lat, td.lng) <= radiusKm
-            : true)
-          .map((td) => (
-          <Marker
-            key={td.owner_id}
-            coordinate={{ latitude: td.lat, longitude: td.lng }}
-            anchor={{ x: 0.5, y: 1 }}
-            zIndex={2}
-            onPress={() => handleMarkerPress(td)}
-          >
-            <View style={styles.tripMarkerWrapper}>
-              <View style={styles.tripMarkerBubble}>
-                {td.dog_photo ? (
-                  <Image source={{ uri: td.dog_photo }} style={styles.tripMarkerPhoto} />
-                ) : (
-                  <View style={styles.tripMarkerFallback}>
-                    <Text style={{ fontSize: 18 }}>🐶</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.tripMarkerName} numberOfLines={1}>
-                {td.dog_name}
-              </Text>
-            </View>
-          </Marker>
-        ))}
       </MapView>
 
       {/* Status bar */}
