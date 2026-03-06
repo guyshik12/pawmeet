@@ -32,6 +32,12 @@ import { supabase } from '../../lib/supabase';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+const DOG_PARKS_URL =
+  'https://gisn.tel-aviv.gov.il/arcgis/rest/services/IView2/MapServer/586/query' +
+  '?where=1%3D1&outFields=shem_gina,Full_Address,shaot&f=json&outSR=4326';
+
+type DogPark = { id: string; name: string; address: string; lat: number; lng: number };
+
 // ─── Profile bottom sheet (tap on a dog marker) ─────────────────────────────
 type TripFriendship = { id: string; friendName: string; friendDogName: string; isUserA: boolean };
 
@@ -239,6 +245,27 @@ export default function WalksScreen() {
   const seenRequestIds = useRef<Set<string>>(new Set());
   // Dogs we already connected to — skip their reverse requests in the poll
   const connectedDogIds = useRef<Set<string>>(new Set());
+
+  const [dogParks, setDogParks] = useState<DogPark[]>([]);
+
+  // Fetch Tel Aviv dog parks once on mount
+  useEffect(() => {
+    fetch(DOG_PARKS_URL)
+      .then((r) => r.json())
+      .then((json) => {
+        const parks: DogPark[] = (json.features ?? [])
+          .filter((f: any) => f.geometry?.x && f.geometry?.y)
+          .map((f: any, i: number) => ({
+            id: String(f.attributes?.UniqueId ?? i),
+            name: f.attributes?.shem_gina ?? 'Dog Park',
+            address: f.attributes?.Full_Address ?? '',
+            lat: f.geometry.y,
+            lng: f.geometry.x,
+          }));
+        setDogParks(parks);
+      })
+      .catch(() => {});
+  }, []);
 
   const watchRef = useRef<ExpoLocation.LocationSubscription | null>(null);
   const mapRef = useRef<MapView>(null);
@@ -554,6 +581,20 @@ export default function WalksScreen() {
           </Marker>
         )}
 
+        {/* Dog parks */}
+        {dogParks.map((park) => (
+          <Marker
+            key={`park_${park.id}`}
+            coordinate={{ latitude: park.lat, longitude: park.lng }}
+            anchor={{ x: 0.5, y: 1 }}
+            tracksViewChanges={false}
+          >
+            <View style={styles.parkMarker}>
+              <Text style={styles.parkMarkerEmoji}>🐾</Text>
+            </View>
+          </Marker>
+        ))}
+
         {/* Other dogs */}
         {tripDogs.map((td) => (
           <Marker
@@ -716,6 +757,17 @@ const styles = StyleSheet.create({
   },
   tripMarkerPhoto: { width: 44, height: 44, borderRadius: 22 },
   tripMarkerFallback: { justifyContent: 'center', alignItems: 'center' },
+  parkMarker: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#1A4D2E',
+    borderWidth: 1.5,
+    borderColor: '#4CAF50',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  parkMarkerEmoji: { fontSize: 14 },
   tripMarkerName: {
     ...typography.caption,
     color: colors.text,
