@@ -49,6 +49,14 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         cameraPermission: 'Allow $(PRODUCT_NAME) to use your camera.',
       },
     ],
+    [
+      'expo-notifications',
+      {
+        icon: './assets/icon.png',
+        color: '#4CAF50',
+        sounds: [],
+      },
+    ],
   ],
   extra: {
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,

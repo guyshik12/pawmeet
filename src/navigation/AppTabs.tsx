@@ -19,6 +19,10 @@ import { getTotalBadgeCount } from '../services/friendService';
 import { getDogs } from '../services/dogService';
 import { supabase } from '../lib/supabase';
 import MatchModal, { MatchModalData } from '../components/MatchModal';
+import InAppMessageBanner, { MessageBannerData } from '../components/InAppMessageBanner';
+import { registerPushToken } from '../services/notificationService';
+import { activeChatFriendshipId } from '../services/activeChatRef';
+import { navigationRef } from '../services/navigationRef';
 
 const TabIcon = ({ emoji, focused }: { emoji: string; focused: boolean }) => (
   <Text style={{ fontSize: 22, opacity: focused ? 1 : 0.5 }}>{emoji}</Text>
@@ -80,6 +84,7 @@ function FriendsNavigator() {
 export default function AppTabs() {
   const [pickerVisible, setPickerVisible] = useState(false);
   const [addDogVisible, setAddDogVisible] = useState(false);
+  const [bannerData, setBannerData] = useState<MessageBannerData | null>(null);
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const { dogs, currentDog, setDogs, isOnTrip, lastDiscoverMatchMs } = useDogStore();
@@ -102,6 +107,11 @@ export default function AppTabs() {
     enabled: !!user,
     staleTime: 0,
   });
+
+  // Register push token once after login
+  useEffect(() => {
+    if (user) registerPushToken(user.id);
+  }, [user?.id]);
 
   const { data: pendingCount = 0 } = useQuery({
     queryKey: ['badge_count', dog?.id],
@@ -178,8 +188,33 @@ export default function AppTabs() {
           theirDogPhoto: friendDog?.photo_url ?? null,
         });
       })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async (payload: any) => {
         queryClient.invalidateQueries({ queryKey: ['badge_count'] });
+        const msg = payload.new;
+        if (!msg || !user || msg.sender_id === user.id) return;
+        // Don't show banner if user is already in that chat
+        if (activeChatFriendshipId === msg.friendship_id) return;
+        // Look up friendship to get friend dog name
+        const { data: friendship } = await supabase
+          .from('friendships')
+          .select('id, dog_a, dog_b, user_a, user_b')
+          .eq('id', msg.friendship_id)
+          .single() as any;
+        if (!friendship) return;
+        const iAmA = (friendship as any).user_a === user.id;
+        const friendDogId = iAmA ? (friendship as any).dog_b : (friendship as any).dog_a;
+        const friendUserId = iAmA ? (friendship as any).user_b : (friendship as any).user_a;
+        const { data: friendDog } = await supabase
+          .from('dogs').select('name').eq('id', friendDogId).single() as any;
+        const { data: friendProfile } = await supabase
+          .from('profiles').select('name').eq('id', friendUserId).single() as any;
+        setBannerData({
+          friendDogName: (friendDog as any)?.name ?? 'New message',
+          friendshipId: msg.friendship_id,
+          friendName: (friendProfile as any)?.name ?? '',
+          isUserA: iAmA,
+          message: msg.content ?? '',
+        });
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -267,6 +302,25 @@ export default function AppTabs() {
         theirDogName={matchData?.theirDogName ?? ''}
         theirDogPhoto={matchData?.theirDogPhoto ?? null}
         onClose={() => setMatchData(null)}
+      />
+
+      <InAppMessageBanner
+        data={bannerData}
+        onDismiss={() => setBannerData(null)}
+        onPress={(d) => {
+          setBannerData(null);
+          if (navigationRef.isReady()) {
+            navigationRef.navigate('FriendsStack', {
+              screen: Routes.Chat,
+              params: {
+                friendshipId: d.friendshipId,
+                friendName: d.friendName,
+                friendDogName: d.friendDogName,
+                isUserA: d.isUserA,
+              },
+            });
+          }
+        }}
       />
 
     </>

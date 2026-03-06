@@ -8,6 +8,7 @@ import { useAuthStore } from '../../store/authStore';
 import { getMessages, sendMessage } from '../../services/chatService';
 import { markFriendshipRead } from '../../services/friendService';
 import { supabase } from '../../lib/supabase';
+import { setActiveChatFriendshipId } from '../../services/activeChatRef';
 import { Message } from '../../types/database.types';
 import { colors, spacing, typography, borderRadius, shadow } from '../../constants/theme';
 import { format } from 'date-fns';
@@ -28,6 +29,12 @@ export default function ChatScreen({ route, navigation }: Props) {
   useEffect(() => {
     navigation.setOptions({ title: friendDogName });
   }, [friendDogName]);
+
+  // Tell AppTabs we're in this chat so it won't show a banner for its messages
+  useEffect(() => {
+    setActiveChatFriendshipId(friendshipId);
+    return () => setActiveChatFriendshipId(null);
+  }, [friendshipId]);
 
   // Mark as read when screen opens
   useEffect(() => {
