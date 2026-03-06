@@ -29,6 +29,7 @@ import {
 } from '../../services/locationService';
 import { handleDogLike } from '../../services/friendService';
 import { supabase } from '../../lib/supabase';
+import DogParkIcon from '../../components/DogParkIcon';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -590,7 +591,7 @@ export default function WalksScreen() {
             tracksViewChanges={false}
           >
             <View style={styles.parkMarker}>
-              <Text style={styles.parkMarkerEmoji}>🐾</Text>
+              <DogParkIcon size={20} />
             </View>
           </Marker>
         ))}
@@ -767,7 +768,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  parkMarkerEmoji: { fontSize: 14 },
   tripMarkerName: {
     ...typography.caption,
     color: colors.text,
