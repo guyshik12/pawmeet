@@ -31,7 +31,8 @@ import { handleDogLike } from '../../services/friendService';
 import { supabase } from '../../lib/supabase';
 
 const DOG_PARK_PIN = require('../../../assets/dog-park-pin.png');
-const PARK_RADIUS_KM = 2;
+const RADIUS_OPTIONS = [1, 2, 5, 10];
+const RADIUS_STORAGE_KEY = 'trip_radius_km';
 
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371;
@@ -237,6 +238,7 @@ export default function WalksScreen() {
   const navigation = useNavigation<any>();
 
   const [onTrip, setOnTrip] = useState(false);
+  const [radiusKm, setRadiusKm] = useState(2);
   const [myLocation, setMyLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [tripDogs, setTripDogs] = useState<TripDog[]>([]);
   const [loading, setLoading] = useState(false);
@@ -259,6 +261,19 @@ export default function WalksScreen() {
   const connectedDogIds = useRef<Set<string>>(new Set());
 
   const [dogParks, setDogParks] = useState<DogPark[]>([]);
+
+  // Load saved radius on mount
+  useEffect(() => {
+    AsyncStorage.getItem(RADIUS_STORAGE_KEY).then((v) => {
+      const n = Number(v);
+      if (RADIUS_OPTIONS.includes(n)) setRadiusKm(n);
+    });
+  }, []);
+
+  const handleRadiusChange = (km: number) => {
+    setRadiusKm(km);
+    AsyncStorage.setItem(RADIUS_STORAGE_KEY, String(km));
+  };
 
   // Fetch Tel Aviv dog parks once on mount
   useEffect(() => {
@@ -538,6 +553,23 @@ export default function WalksScreen() {
         <Text style={styles.idleSubtitle}>
           Go live with your dog's location.{'\n'}See other dogs out on trips nearby.
         </Text>
+        <View style={styles.radiusPicker}>
+          <Text style={styles.radiusLabel}>Range</Text>
+          <View style={styles.radiusOptions}>
+            {RADIUS_OPTIONS.map((km) => (
+              <TouchableOpacity
+                key={km}
+                style={[styles.radiusOption, radiusKm === km && styles.radiusOptionActive]}
+                onPress={() => handleRadiusChange(km)}
+              >
+                <Text style={[styles.radiusOptionText, radiusKm === km && styles.radiusOptionTextActive]}>
+                  {km} km
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
         {error && <Text style={styles.errorText}>{error}</Text>}
         <TouchableOpacity
           style={[styles.startBtn, (!dog || loading) && styles.disabledBtn]}
@@ -594,10 +626,10 @@ export default function WalksScreen() {
           </Marker>
         )}
 
-        {/* Dog parks — only those within PARK_RADIUS_KM of the user */}
+        {/* Dog parks — only those within radiusKm of the user */}
         {dogParks
           .filter((park) => myLocation
-            ? haversineKm(myLocation.lat, myLocation.lng, park.lat, park.lng) <= PARK_RADIUS_KM
+            ? haversineKm(myLocation.lat, myLocation.lng, park.lat, park.lng) <= radiusKm
             : false)
           .map((park) => (
           <Marker
@@ -613,7 +645,7 @@ export default function WalksScreen() {
         {/* Other dogs — filtered to radius, always above parks */}
         {tripDogs
           .filter((td) => myLocation
-            ? haversineKm(myLocation.lat, myLocation.lng, td.lat, td.lng) <= PARK_RADIUS_KM
+            ? haversineKm(myLocation.lat, myLocation.lng, td.lat, td.lng) <= radiusKm
             : true)
           .map((td) => (
           <Marker
@@ -649,6 +681,21 @@ export default function WalksScreen() {
             ? 'No other dogs on a trip nearby'
             : `${tripDogs.length} dog${tripDogs.length > 1 ? 's' : ''} nearby — tap to connect`}
         </Text>
+      </View>
+
+      {/* Range picker */}
+      <View style={styles.radiusPickerMap}>
+        {RADIUS_OPTIONS.map((km) => (
+          <TouchableOpacity
+            key={km}
+            style={[styles.radiusOptionMap, radiusKm === km && styles.radiusOptionMapActive]}
+            onPress={() => handleRadiusChange(km)}
+          >
+            <Text style={[styles.radiusOptionMapText, radiusKm === km && styles.radiusOptionMapTextActive]}>
+              {km}km
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       {/* End trip */}
@@ -777,6 +824,71 @@ const styles = StyleSheet.create({
   },
   tripMarkerPhoto: { width: 44, height: 44, borderRadius: 22 },
   tripMarkerFallback: { justifyContent: 'center', alignItems: 'center' },
+  // ── Radius picker (idle screen) ──
+  radiusPicker: {
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  radiusLabel: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: '700',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: spacing.sm,
+  },
+  radiusOptions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  radiusOption: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: borderRadius.full,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  radiusOptionActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  radiusOptionText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  radiusOptionTextActive: {
+    color: '#fff',
+  },
+  // ── Radius picker (map overlay) ──
+  radiusPickerMap: {
+    position: 'absolute',
+    top: 56,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    backgroundColor: 'rgba(10,10,10,0.8)',
+    borderRadius: borderRadius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  radiusOptionMap: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: borderRadius.full,
+  },
+  radiusOptionMapActive: {
+    backgroundColor: colors.primary,
+  },
+  radiusOptionMapText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.5)',
+  },
+  radiusOptionMapTextActive: {
+    color: '#fff',
+  },
   tripMarkerName: {
     ...typography.caption,
     color: colors.text,
