@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MapView, { Marker } from 'react-native-maps';
+import Svg from 'react-native-svg';
 import * as ExpoLocation from 'expo-location';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { colors, spacing, borderRadius, typography } from '../../constants/theme';
@@ -248,6 +249,10 @@ export default function WalksScreen() {
   const connectedDogIds = useRef<Set<string>>(new Set());
 
   const [dogParks, setDogParks] = useState<DogPark[]>([]);
+  // Bitmap snapshot of DogParkIcon — passed to Marker `image` so the marker
+  // is a native static bitmap that never scales with map zoom.
+  const [parkIconUri, setParkIconUri] = useState<string | null>(null);
+  const parkIconRef = useRef<Svg>(null);
 
   // Fetch Tel Aviv dog parks once on mount
   useEffect(() => {
@@ -266,6 +271,16 @@ export default function WalksScreen() {
         setDogParks(parks);
       })
       .catch(() => {});
+  }, []);
+
+  // Capture the SVG icon to a PNG bitmap after first render
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      parkIconRef.current?.toDataURL?.((base64: string) => {
+        setParkIconUri(`data:image/png;base64,${base64}`);
+      });
+    }, 200); // slight delay so the hidden SVG has rendered
+    return () => clearTimeout(timer);
   }, []);
 
   const watchRef = useRef<ExpoLocation.LocationSubscription | null>(null);
@@ -582,18 +597,16 @@ export default function WalksScreen() {
           </Marker>
         )}
 
-        {/* Dog parks */}
-        {dogParks.map((park) => (
+        {/* Dog parks — use `image` prop so the marker is a static native bitmap
+            that the map renderer never rescales on zoom */}
+        {parkIconUri && dogParks.map((park) => (
           <Marker
             key={`park_${park.id}`}
             coordinate={{ latitude: park.lat, longitude: park.lng }}
-            anchor={{ x: 0.5, y: 1 }}
+            anchor={{ x: 0.5, y: 0.5 }}
             tracksViewChanges={false}
-          >
-            <View style={styles.parkMarker}>
-              <DogParkIcon size={20} />
-            </View>
-          </Marker>
+            image={{ uri: parkIconUri }}
+          />
         ))}
 
         {/* Other dogs */}
@@ -650,6 +663,13 @@ export default function WalksScreen() {
         connected={connected}
         friendship={selectedFriendship}
       />
+
+      {/* Hidden SVG used once on mount to snapshot the dog park icon as a bitmap */}
+      {!parkIconUri && (
+        <View style={styles.hiddenCapture} pointerEvents="none">
+          <DogParkIcon ref={parkIconRef} size={28} />
+        </View>
+      )}
 
       {/* Incoming like popup */}
       <IncomingLikeModal
@@ -758,15 +778,11 @@ const styles = StyleSheet.create({
   },
   tripMarkerPhoto: { width: 44, height: 44, borderRadius: 22 },
   tripMarkerFallback: { justifyContent: 'center', alignItems: 'center' },
-  parkMarker: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#1A4D2E',
-    borderWidth: 1.5,
-    borderColor: '#4CAF50',
-    justifyContent: 'center',
-    alignItems: 'center',
+  hiddenCapture: {
+    position: 'absolute',
+    top: -200,
+    left: -200,
+    opacity: 0,
   },
   tripMarkerName: {
     ...typography.caption,
