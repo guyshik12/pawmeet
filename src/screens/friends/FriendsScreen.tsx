@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, FlatList, StyleSheet, ActivityIndicator,
-  TouchableOpacity, Image, RefreshControl,
+  Animated, View, Text, FlatList, StyleSheet, ActivityIndicator,
+  TouchableOpacity, TouchableWithoutFeedback, Image, RefreshControl, ScrollView, TextInput,
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CommonActions } from '@react-navigation/native';
@@ -16,7 +16,8 @@ import Toast from '../../components/ui/Toast';
 import { useToast } from '../../hooks/useToast';
 import SegmentedControl from '../../components/SegmentedControl';
 import PackCard from '../../components/PackCard';
-import { getPacks, PackWithMembers } from '../../services/packService';
+import { getPacks, PackWithMembers, joinPack, createJoinRequest } from '../../services/packService';
+import { searchAll, SearchResults, SearchPackResult } from '../../services/searchService';
 
 function statusRingColor(status: 'active' | 'looking' | 'offline'): string {
   switch (status) {
@@ -36,22 +37,86 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
   const { toast, showToast, hideToast } = useToast();
   const [activeTab, setActiveTab] = useState(0);
 
-  React.useLayoutEffect(() => {
+  const [searchActive, setSearchActive] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResults>({ dogs: [], owners: [], breeds: [], packs: [] });
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchBarHeight = useRef(new Animated.Value(0)).current;
+
+  function openSearch() {
+    setSearchActive(true);
+    Animated.spring(searchBarHeight, {
+      toValue: 1,
+      useNativeDriver: false,
+      damping: 18,
+      stiffness: 160,
+    }).start();
+    navigation.setOptions({ headerRight: undefined });
+  }
+
+  function closeSearch() {
+    setSearchActive(false);
+    setSearchQuery('');
+    setSearchResults({ dogs: [], owners: [], breeds: [], packs: [] });
+    setSearched(false);
+    Animated.spring(searchBarHeight, {
+      toValue: 0,
+      useNativeDriver: false,
+      damping: 18,
+      stiffness: 160,
+    }).start();
     if (activeTab === 1) {
       navigation.setOptions({
         headerRight: () => (
-          <TouchableOpacity
-            onPress={() => navigation.navigate('CreatePack')}
-            style={{ marginRight: spacing.sm }}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
+          <TouchableOpacity onPress={() => navigation.navigate('CreatePack')} style={{ marginRight: spacing.sm }}>
             <Text style={{ fontSize: 24, color: colors.primary }}>+</Text>
           </TouchableOpacity>
         ),
       });
-    } else {
-      navigation.setOptions({ headerRight: undefined });
     }
+  }
+
+  useEffect(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    if (searchQuery.length < 2) {
+      setSearchResults({ dogs: [], owners: [], breeds: [], packs: [] });
+      setSearched(false);
+      setSearchLoading(false);
+      return;
+    }
+    setSearchLoading(true);
+    searchDebounceRef.current = setTimeout(async () => {
+      try {
+        const r = await searchAll(searchQuery, userId);
+        setSearchResults(r);
+        setSearched(true);
+      } catch {
+        setSearchResults({ dogs: [], owners: [], breeds: [], packs: [] });
+        setSearched(true);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 300);
+    return () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); };
+  }, [searchQuery, userId]);
+
+  React.useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginRight: spacing.sm }}>
+          <TouchableOpacity onPress={openSearch} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Text style={{ fontSize: 20 }}>🔍</Text>
+          </TouchableOpacity>
+          {activeTab === 1 && (
+            <TouchableOpacity onPress={() => navigation.navigate('CreatePack')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Text style={{ fontSize: 24, color: colors.primary }}>+</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      ),
+    });
   }, [activeTab]);
 
   // Keep a stable ref to navigation so the registered handler never captures a stale value.
@@ -152,134 +217,169 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
 
   return (
     <View style={styles.container}>
-      <SegmentedControl
-        options={['Friends', 'Packs']}
-        selectedIndex={activeTab}
-        onChange={setActiveTab}
-        style={{ margin: spacing.md, marginBottom: 0 }}
-      />
-      {activeTab === 0 ? (
-        friendsLoading ? (
-          <View style={styles.center}><ActivityIndicator size="large" color={colors.primary} /></View>
-        ) : (
-          <FlatList
-            data={sortedFriends}
-            keyExtractor={(f) => f.id}
-            contentContainerStyle={friends.length === 0 ? styles.emptyContainer : styles.list}
-            refreshControl={<RefreshControl refreshing={friendsRefetching} onRefresh={refetchFriends} tintColor={colors.primary} />}
-            ListEmptyComponent={
-              <View style={styles.empty}>
-                <Text style={styles.emptyEmoji}>🐶</Text>
-                <Text style={styles.emptyTitle}>No park pals yet</Text>
-                <Text style={styles.emptySubtitle}>Say hi to dogs in Discover. When they wave back, you're park pals.</Text>
-              </View>
-            }
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.card}
-                activeOpacity={0.75}
-                onPress={() => navigation.navigate('FriendProfile', {
-                  dog: item.friendDog,
-                  ownerProfile: item.friendOwner,
-                  ownerId: item.friendDog.owner_id,
-                  friendshipId: item.id,
-                  isUserA: item.user_a === userId,
-                  friendName: item.friendOwner.name,
-                })}
-              >
-                <View style={styles.avatarWrap}>
-                  {item.friendDog?.photo_url ? (
-                    <Image
-                      source={{ uri: item.friendDog.photo_url }}
-                      style={[styles.avatar, { borderWidth: 2.5, borderColor: statusRingColor(item.friendOwner.status) }]}
-                    />
-                  ) : (
-                    <View style={[styles.avatarPlaceholder, { borderWidth: 2.5, borderColor: statusRingColor(item.friendOwner.status) }]}>
-                      <Text style={{ fontSize: 28 }}>🐶</Text>
-                    </View>
-                  )}
-                  {(unreadCounts[item.id] ?? 0) > 0 && (
-                    <View style={styles.unreadBadge}>
-                      <Text style={styles.unreadBadgeText}>
-                        {Math.min(unreadCounts[item.id] ?? 0, 9)}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-                <View style={styles.info}>
-                  <View style={styles.nameRow}>
-                    <Text style={styles.name}>{item.friendDog?.name ?? '?'}</Text>
-                    {item.friendOwner.verified && (
-                      <View style={styles.verifiedBadge}><Text style={styles.verifiedText}>✓</Text></View>
-                    )}
-                    {item.friendOwner.status !== 'offline' && (
-                      <View style={[styles.statusPill, { backgroundColor: statusRingColor(item.friendOwner.status) + '22' }]}>
-                        <Text style={[styles.statusPillText, { color: statusRingColor(item.friendOwner.status) }]}>
-                          {item.friendOwner.status === 'active' ? 'Active' : 'Looking'}
-                        </Text>
-                      </View>
-                    )}
+      <Animated.View style={[styles.searchBarWrap, {
+        maxHeight: searchBarHeight.interpolate({ inputRange: [0, 1], outputRange: [0, 56] }),
+        opacity: searchBarHeight,
+        overflow: 'hidden',
+      }]}>
+        <View style={styles.searchBar}>
+          <Text style={styles.searchIcon}>🔍</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search dogs, owners, breeds, packs..."
+            placeholderTextColor={colors.textSecondary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {searchLoading && <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 4 }} />}
+          <TouchableOpacity onPress={closeSearch}>
+            <Text style={styles.cancelText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
+      {searchActive ? (
+        <SearchResultsList
+          results={searchResults}
+          searched={searched}
+          query={searchQuery}
+          userId={userId}
+          activeDog={activeDog}
+          navigation={navigation}
+        />
+      ) : (
+        <>
+          <SegmentedControl
+            options={['Friends', 'Packs']}
+            selectedIndex={activeTab}
+            onChange={setActiveTab}
+            style={{ margin: spacing.md, marginBottom: 0 }}
+          />
+          {activeTab === 0 ? (
+            friendsLoading ? (
+              <View style={styles.center}><ActivityIndicator size="large" color={colors.primary} /></View>
+            ) : (
+              <FlatList
+                data={sortedFriends}
+                keyExtractor={(f) => f.id}
+                contentContainerStyle={friends.length === 0 ? styles.emptyContainer : styles.list}
+                refreshControl={<RefreshControl refreshing={friendsRefetching} onRefresh={refetchFriends} tintColor={colors.primary} />}
+                ListEmptyComponent={
+                  <View style={styles.empty}>
+                    <Text style={styles.emptyEmoji}>🐶</Text>
+                    <Text style={styles.emptyTitle}>No park pals yet</Text>
+                    <Text style={styles.emptySubtitle}>Say hi to dogs in Discover. When they wave back, you're park pals.</Text>
                   </View>
-                  {item.friendDog?.breed ? <Text style={styles.meta}>{item.friendDog.breed}</Text> : null}
-                  {lastMessages[item.id] ? (
-                    <Text style={styles.lastMessage} numberOfLines={1}>{lastMessages[item.id]}</Text>
-                  ) : null}
-                  <Text style={styles.ownerName}>with {item.friendOwner.name}</Text>
-                </View>
-                <View style={styles.actionBtns}>
+                }
+                renderItem={({ item }) => (
                   <TouchableOpacity
-                    style={styles.woofBtn}
-                    onPress={() => woofMutation.mutate({ friendshipId: item.id })}
-                  >
-                    <Text style={styles.woofBtnText}>Woof</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.chatBtn}
-                    onPress={() => navigation.navigate('Chat', {
+                    style={styles.card}
+                    activeOpacity={0.75}
+                    onPress={() => navigation.navigate('FriendProfile', {
+                      dog: item.friendDog,
+                      ownerProfile: item.friendOwner,
+                      ownerId: item.friendDog.owner_id,
                       friendshipId: item.id,
-                      friendName: item.friendOwner.name,
-                      friendDogName: item.friendDog?.name ?? item.friendOwner.name,
                       isUserA: item.user_a === userId,
+                      friendName: item.friendOwner.name,
                     })}
                   >
-                    <Text style={styles.chatBtnText}>Chat</Text>
+                    <View style={styles.avatarWrap}>
+                      {item.friendDog?.photo_url ? (
+                        <Image
+                          source={{ uri: item.friendDog.photo_url }}
+                          style={[styles.avatar, { borderWidth: 2.5, borderColor: statusRingColor(item.friendOwner.status) }]}
+                        />
+                      ) : (
+                        <View style={[styles.avatarPlaceholder, { borderWidth: 2.5, borderColor: statusRingColor(item.friendOwner.status) }]}>
+                          <Text style={{ fontSize: 28 }}>🐶</Text>
+                        </View>
+                      )}
+                      {(unreadCounts[item.id] ?? 0) > 0 && (
+                        <View style={styles.unreadBadge}>
+                          <Text style={styles.unreadBadgeText}>
+                            {Math.min(unreadCounts[item.id] ?? 0, 9)}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.info}>
+                      <View style={styles.nameRow}>
+                        <Text style={styles.name}>{item.friendDog?.name ?? '?'}</Text>
+                        {item.friendOwner.verified && (
+                          <View style={styles.verifiedBadge}><Text style={styles.verifiedText}>✓</Text></View>
+                        )}
+                        {item.friendOwner.status !== 'offline' && (
+                          <View style={[styles.statusPill, { backgroundColor: statusRingColor(item.friendOwner.status) + '22' }]}>
+                            <Text style={[styles.statusPillText, { color: statusRingColor(item.friendOwner.status) }]}>
+                              {item.friendOwner.status === 'active' ? 'Active' : 'Looking'}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                      {item.friendDog?.breed ? <Text style={styles.meta}>{item.friendDog.breed}</Text> : null}
+                      {lastMessages[item.id] ? (
+                        <Text style={styles.lastMessage} numberOfLines={1}>{lastMessages[item.id]}</Text>
+                      ) : null}
+                      <Text style={styles.ownerName}>with {item.friendOwner.name}</Text>
+                    </View>
+                    <View style={styles.actionBtns}>
+                      <TouchableOpacity
+                        style={styles.woofBtn}
+                        onPress={() => woofMutation.mutate({ friendshipId: item.id })}
+                      >
+                        <Text style={styles.woofBtnText}>Woof</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.chatBtn}
+                        onPress={() => navigation.navigate('Chat', {
+                          friendshipId: item.id,
+                          friendName: item.friendOwner.name,
+                          friendDogName: item.friendDog?.name ?? item.friendOwner.name,
+                          isUserA: item.user_a === userId,
+                        })}
+                      >
+                        <Text style={styles.chatBtnText}>Chat</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </TouchableOpacity>
+                )}
+              />
+            )
+          ) : (
+            <View style={{ flex: 1 }}>
+              {packs.length === 0 ? (
+                <View style={styles.empty}>
+                  <Text style={{ fontSize: 72 }}>🐾</Text>
+                  <Text style={styles.emptyTitle}>No packs yet</Text>
+                  <Text style={styles.emptySubtitle}>Gather your park pals into a Pack for group hangouts.</Text>
+                  <TouchableOpacity style={styles.chatBtn} onPress={() => navigation.navigate('CreatePack')}>
+                    <Text style={styles.chatBtnText}>Start a Pack</Text>
                   </TouchableOpacity>
                 </View>
-              </TouchableOpacity>
-            )}
-          />
-        )
-      ) : (
-        <View style={{ flex: 1 }}>
-          {packs.length === 0 ? (
-            <View style={styles.empty}>
-              <Text style={{ fontSize: 72 }}>🐾</Text>
-              <Text style={styles.emptyTitle}>No packs yet</Text>
-              <Text style={styles.emptySubtitle}>Gather your park pals into a Pack for group hangouts.</Text>
-              <TouchableOpacity style={styles.chatBtn} onPress={() => navigation.navigate('CreatePack')}>
-                <Text style={styles.chatBtnText}>Start a Pack</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <FlatList
-              data={packs}
-              keyExtractor={(p) => p.id}
-              contentContainerStyle={styles.list}
-              renderItem={({ item }) => (
-                <PackCard
-                  packName={item.name}
-                  memberDogPhotos={item.members.slice(0, 3).map((m) => m.dogPhoto).filter(Boolean) as string[]}
-                  memberCount={item.members.length}
-                  lastMessage={null}
-                  hasLiveMember={false}
-                  unreadCount={0}
-                  packType={item.type}
-                  onPress={() => navigation.navigate('PackChat', { packId: item.id, packName: item.name, memberCount: item.members.length })}
+              ) : (
+                <FlatList
+                  data={packs}
+                  keyExtractor={(p) => p.id}
+                  contentContainerStyle={styles.list}
+                  renderItem={({ item }) => (
+                    <PackCard
+                      packName={item.name}
+                      memberDogPhotos={item.members.slice(0, 3).map((m) => m.dogPhoto).filter(Boolean) as string[]}
+                      memberCount={item.members.length}
+                      lastMessage={null}
+                      hasLiveMember={false}
+                      unreadCount={0}
+                      packType={item.type}
+                      onPress={() => navigation.navigate('PackChat', { packId: item.id, packName: item.name, memberCount: item.members.length })}
+                    />
+                  )}
                 />
               )}
-            />
+            </View>
           )}
-        </View>
+        </>
       )}
       <Toast message={toast.message} type={toast.type} visible={toast.visible} onHide={hideToast} />
     </View>
@@ -340,4 +440,304 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   chatBtnText: { fontSize: 12, color: '#fff', fontWeight: '700' as const },
+  searchBarWrap: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
+  searchBar: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: colors.surfaceHigh,
+    borderRadius: borderRadius.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  searchIcon: { fontSize: 16, marginRight: 6 },
+  searchInput: { flex: 1, ...typography.body, color: colors.text, paddingVertical: 0 },
+  cancelText: { ...typography.body, color: colors.primary, fontWeight: '600', marginLeft: spacing.sm },
+});
+
+const SHEET_HEIGHT = 260;
+
+function SearchResultsList({
+  results, searched, query, userId, activeDog, navigation,
+}: {
+  results: SearchResults;
+  searched: boolean;
+  query: string;
+  userId: string;
+  activeDog: any;
+  navigation: any;
+}) {
+  const [joinedPackIds, setJoinedPackIds] = useState<Set<string>>(new Set());
+  const [requestedPackIds, setRequestedPackIds] = useState<Set<string>>(new Set());
+  const [previewPack, setPreviewPack] = useState<SearchPackResult | null>(null);
+  const sheetAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
+
+  function openPackPreview(pack: SearchPackResult) {
+    setPreviewPack(pack);
+    Animated.spring(sheetAnim, {
+      toValue: 0,
+      useNativeDriver: true,
+      damping: 18,
+      stiffness: 160,
+    }).start();
+  }
+
+  function closePackPreview() {
+    Animated.spring(sheetAnim, {
+      toValue: SHEET_HEIGHT,
+      useNativeDriver: true,
+      damping: 18,
+      stiffness: 160,
+    }).start(() => setPreviewPack(null));
+  }
+
+  const hasResults = results.dogs.length > 0 || results.owners.length > 0 ||
+    results.breeds.length > 0 || results.packs.length > 0;
+
+  async function handleJoin(pack: SearchPackResult) {
+    try {
+      await joinPack(pack.packId, userId, activeDog?.id ?? null);
+      setJoinedPackIds((prev) => new Set([...prev, pack.packId]));
+      navigation.navigate('PackChat', {
+        packId: pack.packId,
+        packName: pack.packName,
+        memberCount: pack.memberCount + 1,
+      });
+    } catch (e) {
+      console.error('[SearchResultsList] joinPack error:', e);
+    }
+  }
+
+  async function handleRequest(packId: string) {
+    try {
+      await createJoinRequest(packId, userId, activeDog?.id ?? null);
+      setRequestedPackIds((prev) => new Set([...prev, packId]));
+    } catch (e) {
+      console.error('[SearchResultsList] createJoinRequest error:', e);
+    }
+  }
+
+  return (
+    <>
+    <ScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={{ padding: spacing.md, paddingBottom: 40 }}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+    >
+      {searched && !hasResults ? (
+        <Text style={searchStyles.emptyText}>No results for "{query}"</Text>
+      ) : null}
+
+      {results.packs.length > 0 && (
+        <View style={searchStyles.section}>
+          <Text style={searchStyles.sectionHeader}>Packs</Text>
+          {results.packs.map((pack) => (
+            <TouchableOpacity
+              key={pack.packId}
+              style={searchStyles.resultRow}
+              activeOpacity={0.7}
+              onPress={() => openPackPreview(pack)}
+            >
+              <Text style={{ fontSize: 20, marginRight: spacing.sm }}>
+                {pack.packType === 'public' ? '🌍' : '🔓'}
+              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={searchStyles.resultName}>{pack.packName}</Text>
+                <Text style={searchStyles.resultMeta}>
+                  {pack.memberCount} {pack.memberCount === 1 ? 'member' : 'members'} ·{' '}
+                  {pack.packType === 'public' ? 'Public' : 'Semi-public'}
+                </Text>
+              </View>
+              {pack.packType === 'public' ? (
+                <TouchableOpacity
+                  style={searchStyles.actionBtn}
+                  onPress={() => handleJoin(pack)}
+                  disabled={joinedPackIds.has(pack.packId)}
+                >
+                  <Text style={searchStyles.actionBtnText}>
+                    {joinedPackIds.has(pack.packId) ? 'Joined ✓' : 'Join'}
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[searchStyles.actionBtn, searchStyles.actionBtnOutline]}
+                  onPress={() => handleRequest(pack.packId)}
+                  disabled={requestedPackIds.has(pack.packId)}
+                >
+                  <Text style={[searchStyles.actionBtnText, searchStyles.actionBtnOutlineText]}>
+                    {requestedPackIds.has(pack.packId) ? 'Requested ✓' : 'Request'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {results.dogs.length > 0 && (
+        <View style={searchStyles.section}>
+          <Text style={searchStyles.sectionHeader}>Dogs</Text>
+          {results.dogs.map((dog) => (
+            <View key={dog.dogId} style={searchStyles.resultRow}>
+              <View style={searchStyles.avatarSmall}>
+                {dog.dogPhoto
+                  ? <Image source={{ uri: dog.dogPhoto }} style={searchStyles.avatarImg} />
+                  : <Text style={{ fontSize: 20 }}>🐶</Text>}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={searchStyles.resultName}>{dog.dogName}</Text>
+                {dog.dogBreed ? <Text style={searchStyles.resultMeta}>{dog.dogBreed}</Text> : null}
+              </View>
+              <Text style={searchStyles.resultMeta}>{dog.ownerName}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {results.owners.length > 0 && (
+        <View style={searchStyles.section}>
+          <Text style={searchStyles.sectionHeader}>Owners</Text>
+          {results.owners.map((owner) => (
+            <View key={owner.ownerId} style={searchStyles.resultRow}>
+              <View style={searchStyles.avatarSmall}>
+                {owner.ownerPhoto
+                  ? <Image source={{ uri: owner.ownerPhoto }} style={searchStyles.avatarImg} />
+                  : <Text style={{ fontSize: 20 }}>👤</Text>}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={searchStyles.resultName}>{owner.ownerName}</Text>
+                {owner.dogs.length > 0 && (
+                  <Text style={searchStyles.resultMeta}>
+                    {owner.dogs.map((d) => d.name).join(', ')}
+                  </Text>
+                )}
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {results.breeds.length > 0 && (
+        <View style={searchStyles.section}>
+          <Text style={searchStyles.sectionHeader}>Breeds</Text>
+          {results.breeds.map((breed) => (
+            <View key={breed.breed} style={searchStyles.resultRow}>
+              <View style={searchStyles.avatarSmall}>
+                <Text style={{ fontSize: 20 }}>🐕</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={searchStyles.resultName}>{breed.breed}</Text>
+                <Text style={searchStyles.resultMeta}>{breed.count} dogs</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+    </ScrollView>
+
+    {previewPack && (
+      <TouchableWithoutFeedback onPress={closePackPreview}>
+        <View style={StyleSheet.absoluteFill} />
+      </TouchableWithoutFeedback>
+    )}
+    <Animated.View
+      style={[searchStyles.sheet, { transform: [{ translateY: sheetAnim }] }]}
+      pointerEvents={previewPack ? 'auto' : 'none'}
+    >
+      {previewPack && (
+        <View style={searchStyles.sheetInner}>
+          <TouchableOpacity style={searchStyles.sheetClose} onPress={closePackPreview}>
+            <Text style={{ color: colors.textSecondary, fontWeight: '600' }}>✕</Text>
+          </TouchableOpacity>
+          <Text style={{ fontSize: 40, marginBottom: spacing.sm }}>
+            {previewPack.packType === 'public' ? '🌍' : '🔓'}
+          </Text>
+          <Text style={[searchStyles.resultName, { fontSize: 20, marginBottom: 4 }]}>
+            {previewPack.packName}
+          </Text>
+          <Text style={[searchStyles.resultMeta, { marginBottom: spacing.md }]}>
+            {previewPack.memberCount} {previewPack.memberCount === 1 ? 'member' : 'members'} ·{' '}
+            {previewPack.packType === 'public' ? 'Public' : 'Semi-public'}
+          </Text>
+          {previewPack.packType === 'public' ? (
+            <TouchableOpacity
+              style={[searchStyles.actionBtn, { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm }]}
+              onPress={() => { closePackPreview(); handleJoin(previewPack); }}
+              disabled={joinedPackIds.has(previewPack.packId)}
+            >
+              <Text style={searchStyles.actionBtnText}>
+                {joinedPackIds.has(previewPack.packId) ? 'Joined ✓' : 'Join Pack'}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[searchStyles.actionBtn, searchStyles.actionBtnOutline, { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm }]}
+              onPress={() => { closePackPreview(); handleRequest(previewPack.packId); }}
+              disabled={requestedPackIds.has(previewPack.packId)}
+            >
+              <Text style={[searchStyles.actionBtnText, searchStyles.actionBtnOutlineText]}>
+                {requestedPackIds.has(previewPack.packId) ? 'Request Sent ✓' : 'Request to Join'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+    </Animated.View>
+    </>
+  );
+}
+
+const searchStyles = StyleSheet.create({
+  section: { marginBottom: spacing.lg },
+  sectionHeader: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: spacing.sm,
+  },
+  resultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.surfaceHigh,
+  },
+  resultName: { ...typography.body, fontWeight: '700', color: colors.text },
+  resultMeta: { ...typography.bodySmall, color: colors.textSecondary },
+  emptyText: { ...typography.body, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xxl },
+  avatarSmall: {
+    width: 40, height: 40, borderRadius: borderRadius.md,
+    backgroundColor: colors.surfaceHigh, justifyContent: 'center',
+    alignItems: 'center', marginRight: spacing.sm, overflow: 'hidden',
+  },
+  avatarImg: { width: 40, height: 40 },
+  actionBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.full,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+  },
+  actionBtnText: { fontSize: 12, color: '#fff', fontWeight: '700' },
+  actionBtnOutline: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.primary },
+  actionBtnOutlineText: { color: colors.primary },
+  sheet: {
+    position: 'absolute',
+    bottom: 0, left: 0, right: 0,
+    height: SHEET_HEIGHT,
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    borderTopWidth: 1,
+    borderColor: colors.border,
+  },
+  sheetInner: {
+    flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg,
+  },
+  sheetClose: {
+    position: 'absolute', top: spacing.md, right: spacing.md,
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: colors.surfaceHigh,
+    justifyContent: 'center', alignItems: 'center',
+  },
 });
