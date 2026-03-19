@@ -1340,29 +1340,63 @@ return (
       />
     ) : (
       <>
-        <SegmentedControl ... /> {/* existing */}
-        {/* existing Friends/Packs content */}
+        {/* Keep the existing SegmentedControl exactly as-is */}
+        <SegmentedControl
+          options={['Friends', 'Packs']}
+          selectedIndex={activeTab}
+          onChange={setActiveTab}
+          style={{ margin: spacing.md, marginBottom: 0 }}
+        />
+        {/* Keep the existing activeTab === 0 / activeTab === 1 conditional exactly as-is */}
+        {activeTab === 0 ? (
+          friendsLoading ? (
+            <View style={styles.center}><ActivityIndicator size="large" color={colors.primary} /></View>
+          ) : (
+            <FlatList
+              {/* ... keep all existing FlatList props and renderItem unchanged ... */}
+            />
+          )
+        ) : (
+          <View style={{ flex: 1 }}>
+            {packs.length === 0 ? (
+              {/* ... keep existing empty state unchanged ... */}
+            ) : (
+              <FlatList
+                {/* ... keep existing packs FlatList unchanged (PackCard call updated in Task 5) ... */}
+              />
+            )}
+          </View>
+        )}
       </>
     )}
 
-    <Toast ... /> {/* existing */}
+    {/* Keep Toast exactly as-is */}
+    <Toast message={toast.message} type={toast.type} visible={toast.visible} onHide={hideToast} />
   </View>
 );
 ```
 
 - [ ] **Step 6: Add `SearchResultsList` component (bottom of same file)**
 
-Add these additional imports at the top of `FriendsScreen.tsx` (merge with existing RN import):
+First, add all required imports at the **top** of `FriendsScreen.tsx` (merge into existing import blocks — do NOT place imports after the export):
+
 ```typescript
-import { Animated, TouchableWithoutFeedback, ScrollView } from 'react-native'; // add if not already present
+// Add to existing react-native import:
+import { Animated, TouchableWithoutFeedback, ScrollView } from 'react-native';
+
+// Add to existing react import (ensure useRef is present):
+import React, { useEffect, useMemo, useState, useRef } from 'react';
+
+// Add to existing packService import:
+import { getPacks, PackWithMembers, joinPack, createJoinRequest } from '../../services/packService';
+
+// Add to existing searchService import:
+import { searchAll, SearchResults, SearchPackResult } from '../../services/searchService';
 ```
 
-Also ensure `useRef` is imported from `react`.
-
-Add this below the main `FriendsScreen` export:
+Then add the `SearchResultsList` component below the main `FriendsScreen` export (no import statements here — they all go at the top):
 
 ```typescript
-import { joinPack, createJoinRequest } from '../../services/packService';
 
 const SHEET_HEIGHT = 260;
 
