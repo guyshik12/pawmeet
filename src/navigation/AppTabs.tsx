@@ -12,6 +12,7 @@ import WalksScreen from '../screens/walks/WalksScreen';
 import ChatScreen from '../screens/chat/ChatScreen';
 import PackChatScreen from '../screens/chat/PackChatScreen';
 import CreatePackScreen from '../screens/friends/CreatePackScreen';
+import PackRequestsScreen from '../screens/friends/PackRequestsScreen';
 import DogPickerModal from '../components/DogPickerModal';
 import AddEditDogModal from '../screens/dogs/AddEditDogModal';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -62,6 +63,7 @@ export type FriendsStackParamList = {
   [Routes.Chat]: { friendshipId: string; friendName: string; friendDogName: string; isUserA: boolean };
   [Routes.PackChat]: { packId: string; packName: string; memberCount: number };
   [Routes.CreatePack]: undefined;
+  [Routes.PackRequests]: { packId: string; packName: string };
 };
 
 
@@ -92,6 +94,11 @@ function FriendsNavigator() {
         name={Routes.CreatePack}
         component={CreatePackScreen}
         options={{ title: 'Start a Pack' }}
+      />
+      <FriendsStack.Screen
+        name={Routes.PackRequests}
+        component={PackRequestsScreen}
+        options={{ title: 'Pack Requests' }}
       />
     </FriendsStack.Navigator>
   );

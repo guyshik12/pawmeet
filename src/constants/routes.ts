@@ -20,6 +20,9 @@ export const Routes = {
   ScheduleWalk: 'ScheduleWalk',
   WalkDetail: 'WalkDetail',
   UserProfile: 'UserProfile',
+  PackChat: 'PackChat',
+  CreatePack: 'CreatePack',
+  PackRequests: 'PackRequests',
 } as const;
 
 export type RouteKeys = keyof typeof Routes;
