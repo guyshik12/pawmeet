@@ -5,15 +5,54 @@ const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 
 serve(async (req) => {
   try {
-    const { record } = await req.json(); // Supabase DB webhook payload
-    if (!record?.friendship_id || !record?.sender_id || !record?.content) {
-      return new Response('invalid payload', { status: 400 });
-    }
+    const payload = await req.json();
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
+
+    // --- Pack approval notification ---
+    if (payload.type === 'pack_approval') {
+      const { userId, packId } = payload;
+      if (!userId || !packId) return new Response('missing userId or packId', { status: 400 });
+
+      const { data: profile } = await supabase
+        .from('profiles').select('push_token').eq('id', userId).single();
+      if (!profile?.push_token) return new Response('no token', { status: 200 });
+
+      const { data: pack } = await supabase
+        .from('packs').select('name').eq('id', packId).single();
+
+      const { data: member } = await supabase
+        .from('pack_members').select('dog_id').eq('pack_id', packId).eq('user_id', userId).single();
+      let dogName = 'Your dog';
+      if (member?.dog_id) {
+        const { data: dog } = await supabase
+          .from('dogs').select('name').eq('id', member.dog_id).single();
+        if (dog?.name) dogName = dog.name;
+      }
+
+      const packName = pack?.name ?? 'a pack';
+      await fetch(EXPO_PUSH_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: profile.push_token,
+          title: packName,
+          body: `${dogName} was accepted into ${packName}! 🎉`,
+          sound: 'default',
+          channelId: 'messages',
+        }),
+      });
+      return new Response('ok', { status: 200 });
+    }
+
+    // --- Existing DM message notification ---
+    const { record } = payload;
+    if (!record?.friendship_id || !record?.sender_id || !record?.content) {
+      return new Response('invalid payload', { status: 400 });
+    }
 
     // Get the friendship to find the recipient user
     const { data: friendship } = await supabase
