@@ -251,6 +251,78 @@ export interface Database {
           created_at?: string;
         };
       };
+      packs: {
+        Row: {
+          id: string;
+          name: string;
+          type: 'public' | 'semi_public' | 'private';
+          created_by: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          type?: 'public' | 'semi_public' | 'private';
+          created_by: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          type?: 'public' | 'semi_public' | 'private';
+          created_by?: string;
+          created_at?: string;
+        };
+      };
+      pack_members: {
+        Row: {
+          id: string;
+          pack_id: string;
+          user_id: string;
+          dog_id: string | null;
+          joined_at: string;
+        };
+        Insert: {
+          id?: string;
+          pack_id: string;
+          user_id: string;
+          dog_id?: string | null;
+          joined_at?: string;
+        };
+        Update: {
+          id?: string;
+          pack_id?: string;
+          user_id?: string;
+          dog_id?: string | null;
+          joined_at?: string;
+        };
+      };
+      pack_join_requests: {
+        Row: {
+          id: string;
+          pack_id: string;
+          user_id: string;
+          dog_id: string | null;
+          status: 'pending' | 'approved' | 'rejected';
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          pack_id: string;
+          user_id: string;
+          dog_id?: string | null;
+          status?: 'pending' | 'approved' | 'rejected';
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          pack_id?: string;
+          user_id?: string;
+          dog_id?: string | null;
+          status?: 'pending' | 'approved' | 'rejected';
+          created_at?: string;
+        };
+      };
     };
   };
 }
