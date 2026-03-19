@@ -232,21 +232,27 @@ export interface Database {
         Row: {
           id: string;
           friendship_id: string;
+          pack_id: string | null;
           sender_id: string;
+          sender_dog_id: string | null;
           content: string;
           created_at: string;
         };
         Insert: {
           id?: string;
-          friendship_id: string;
+          friendship_id?: string | null;
+          pack_id?: string | null;
           sender_id: string;
+          sender_dog_id?: string | null;
           content: string;
           created_at?: string;
         };
         Update: {
           id?: string;
-          friendship_id?: string;
+          friendship_id?: string | null;
+          pack_id?: string | null;
           sender_id?: string;
+          sender_dog_id?: string | null;
           content?: string;
           created_at?: string;
         };
@@ -335,3 +341,5 @@ export type FriendRequest = Database['public']['Tables']['friend_requests']['Row
 export type Friendship = Database['public']['Tables']['friendships']['Row'];
 export type Walk = Database['public']['Tables']['walks']['Row'];
 export type Message = Database['public']['Tables']['messages']['Row'];
+export type PackMember = Database['public']['Tables']['pack_members']['Row'];
+export type PackJoinRequest = Database['public']['Tables']['pack_join_requests']['Row'];

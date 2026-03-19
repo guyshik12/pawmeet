@@ -23,7 +23,7 @@ export async function getPacks(userId: string): Promise<PackWithMembers[]> {
   const { data, error } = await supabase
     .from('pack_members')
     .select(`
-      pack:packs!pack_id(id, name, created_by, created_at),
+      pack:packs!pack_id(id, name, type, created_by, created_at),
       user_id, dog_id,
       dog:dogs!dog_id(name, photo_url)
     `)
@@ -84,7 +84,8 @@ export async function createPack(
     { pack_id: pack.id, user_id: creatorUserId, dog_id: creatorDogId },
     ...invitedFriends.map((f) => ({ pack_id: pack.id, user_id: f.userId, dog_id: f.dogId })),
   ];
-  await supabase.from('pack_members').insert(members);
+  const { error: membersError } = await supabase.from('pack_members').insert(members);
+  if (membersError) throw membersError;
 
   return pack;
 }
