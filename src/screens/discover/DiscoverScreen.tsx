@@ -3,11 +3,12 @@ import {
   View, Text, StyleSheet, Dimensions, TouchableOpacity,
   ActivityIndicator, ScrollView, Image, Modal,
 } from 'react-native';
+import Svg, { Path, Circle } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import Animated, {
   useSharedValue, useAnimatedStyle, withSpring, withTiming,
-  runOnJS, interpolate, Extrapolation,
+  runOnJS, interpolate, Extrapolation, withRepeat, withSequence,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -319,6 +320,22 @@ function SwipeCard({
 }) {
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
+  const chevronY = useSharedValue(0);
+
+  useEffect(() => {
+    chevronY.value = withRepeat(
+      withSequence(
+        withTiming(5, { duration: 480 }),
+        withTiming(0, { duration: 480 }),
+      ),
+      -1,
+      false,
+    );
+  }, []);
+
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: chevronY.value }],
+  }));
 
   // Only activate for horizontal movement; fail if vertical comes first
   const panGesture = Gesture.Pan()
@@ -393,8 +410,8 @@ function SwipeCard({
                     </View>
                   ) : null}
                   {matchPct !== null ? (
-                    <View style={[styles.matchPill, { backgroundColor: matchColor(matchPct) }]}>
-                      <Text style={styles.matchPillText}>{matchPct}%</Text>
+                    <View style={[styles.matchPill, { backgroundColor: matchColor(matchPct) + 'CC' }]}>
+                      <Text style={styles.matchPillText}>Match {matchPct}%</Text>
                     </View>
                   ) : null}
                 </View>
@@ -412,9 +429,9 @@ function SwipeCard({
                   <View style={[styles.statusDot, { backgroundColor: ownerStatusColor(owner.profile.status) }]} />
                   <Text style={styles.cardOwner}>{owner.profile.name} · {formatDistance(distance)}</Text>
                 </View>
-                <View style={styles.scrollHint}>
-                  <Text style={styles.scrollHintText}>↓ scroll for more</Text>
-                </View>
+                <Animated.View style={[styles.scrollHint, chevronStyle]}>
+                  <Text style={styles.scrollHintText}>⌄ scroll for more</Text>
+                </Animated.View>
               </View>
             </LinearGradient>
           </View>
@@ -438,7 +455,7 @@ function SwipeCard({
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
-export default function DiscoverScreen() {
+export default function DiscoverScreen({ navigation }: { navigation: any }) {
   const { user } = useAuthStore();
   const { currentDog } = useDogStore();
   const myDog = currentDog();
@@ -447,7 +464,13 @@ export default function DiscoverScreen() {
   const [locationError, setLocationError] = useState<string | null>(null);
   const [distanceFilter, setDistanceFilter] = useState(0); // km, 0 = any
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [matchData, setMatchData] = useState<{ theirDogName: string; theirDogPhoto: string | null } | null>(null);
+  const [matchData, setMatchData] = useState<{
+    theirDogName: string;
+    theirDogPhoto: string | null;
+    friendshipId?: string;
+    friendName: string;
+    isUserA: boolean;
+  } | null>(null);
   const { setLastDiscoverMatchMs } = useDogStore();
 
   // Reload distance setting whenever this screen is focused
@@ -488,35 +511,55 @@ export default function DiscoverScreen() {
     queryKey: ['my_requests', user?.id, myDog?.id ?? ''],
     queryFn: () => getMyRequestStatuses(myDog ? [myDog.id] : []),
     enabled: !!user && !!myDog,
+    refetchInterval: 15000,
   });
 
   const { data: myFriends = [] } = useQuery({
     queryKey: ['friends', user?.id, myDog?.id ?? ''],
     queryFn: () => getFriends(myDog ? [myDog.id] : []),
     enabled: !!user && !!myDog,
+    refetchInterval: 15000,
   });
   const friendDogIds = new Set(myFriends.map((f) => f.friendDog.id));
 
   const sayHiMutation = useMutation({
     mutationFn: async (card: NearbyDogCard) => {
       if (!myDog || !user) throw new Error('No dog selected');
+      setLastDiscoverMatchMs(Date.now());
       return handleDogLike(myDog.id, card.dog.id, user.id, card.owner.owner_id);
     },
-    onSuccess: ({ matched }, card) => {
+    onMutate: (card) => {
+      // Optimistically mark as pending so the card disappears from the deck immediately
+      queryClient.setQueryData(
+        ['my_requests', user?.id, myDog?.id ?? ''],
+        (old: Record<string, string> = {}) => ({ ...old, [card.dog.id]: 'pending' })
+      );
+    },
+    onSuccess: ({ matched, friendshipId, isUserA }, card) => {
       queryClient.invalidateQueries({ queryKey: ['my_requests'] });
       if (matched) {
         queryClient.invalidateQueries({ queryKey: ['friends'] });
-        setLastDiscoverMatchMs(Date.now());
-        setMatchData({ theirDogName: card.dog.name, theirDogPhoto: card.dog.photo_url ?? null });
+        setMatchData({
+          theirDogName: card.dog.name,
+          theirDogPhoto: card.dog.photo_url ?? null,
+          friendshipId,
+          friendName: card.owner.profile.name,
+          isUserA: isUserA ?? true,
+        });
+      } else {
+        setLastDiscoverMatchMs(0);
       }
     },
-    onError: (e: any) => showToast(e.message ?? 'Could not send like.', 'error'),
+    onError: (e: any) => {
+      setLastDiscoverMatchMs(0);
+      showToast(e.message ?? 'Could not send like.', 'error');
+    },
   });
 
   const allCards: NearbyDogCard[] = myLocation
     ? nearby.flatMap((owner) =>
         owner.dogs
-          .filter((dog) => !friendDogIds.has(dog.id))
+          .filter((dog) => !friendDogIds.has(dog.id) && !requestStatuses[dog.id])
           .map((dog) => ({
             dog, owner,
             distance: distanceKm(myLocation.lat, myLocation.lng, owner.lat, owner.lng),
@@ -545,13 +588,13 @@ export default function DiscoverScreen() {
 
   const handleSwipeRight = useCallback(() => {
     if (currentCard) {
-      // Skip only if already friends (accepted) — let the RPC handle duplicate likes gracefully
-      if (requestStatuses[currentCard.dog.id] !== 'accepted') {
+      // Skip if already friends or a request is in-flight (prevents duplicate likes on rapid swipes)
+      if (requestStatuses[currentCard.dog.id] !== 'accepted' && !sayHiMutation.isPending) {
         sayHiMutation.mutate(currentCard);
       }
     }
     setCurrentIndex((i) => i + 1);
-  }, [currentCard, requestStatuses]);
+  }, [currentCard, requestStatuses, sayHiMutation.isPending]);
 
   const handleSwipeLeft = useCallback(() => setCurrentIndex((i) => i + 1), []);
 
@@ -576,7 +619,7 @@ export default function DiscoverScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Distance badge */}
+      {/* Distance badge + search button */}
       <View style={styles.distanceBadgeRow}>
         <View style={styles.distanceBadge}>
           <Text style={styles.distanceBadgeText}>
@@ -591,7 +634,7 @@ export default function DiscoverScreen() {
           <View style={styles.emptyState}>
             <Text style={{ fontSize: 72 }}>🐾</Text>
             <Text style={styles.emptyTitle}>No dogs nearby</Text>
-            <Text style={styles.emptySubtitle}>Be the first! Tell your friends to join PawMeet.</Text>
+            <Text style={styles.emptySubtitle}>No dogs nearby yet — you're ahead of the pack.</Text>
           </View>
         ) : !currentCard ? (
           <View style={styles.emptyState}>
@@ -645,7 +688,20 @@ export default function DiscoverScreen() {
         theirDogName={matchData?.theirDogName ?? ''}
         theirDogPhoto={matchData?.theirDogPhoto ?? null}
         onClose={() => setMatchData(null)}
+        onChat={matchData?.friendshipId ? () => {
+          setMatchData(null);
+          navigation.navigate('FriendsStack', {
+            screen: 'Chat',
+            params: {
+              friendshipId: matchData.friendshipId,
+              friendName: matchData.friendName,
+              friendDogName: matchData.theirDogName,
+              isUserA: matchData.isUserA,
+            },
+          });
+        } : undefined}
       />
+
     </View>
   );
 }
@@ -659,7 +715,16 @@ const styles = StyleSheet.create({
   errorTitle: { ...typography.h2, color: colors.text, marginTop: spacing.md },
   errorSubtitle: { ...typography.body, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.sm },
 
-  distanceBadgeRow: { alignItems: 'center', paddingVertical: spacing.xs },
+  distanceBadgeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+  },
+  searchIconBtn: {
+    padding: spacing.xs,
+  },
   distanceBadge: {
     paddingVertical: 4, paddingHorizontal: spacing.md,
     borderRadius: borderRadius.full, borderWidth: 1, borderColor: colors.border,
@@ -709,19 +774,20 @@ const styles = StyleSheet.create({
   },
   genderText: { fontSize: 15, color: '#fff', fontWeight: '700' },
   matchPill: {
-    borderRadius: borderRadius.full, paddingHorizontal: 9, paddingVertical: 3,
+    borderRadius: borderRadius.full, paddingHorizontal: 10, paddingVertical: 4,
   },
-  matchPillText: { fontSize: 13, color: '#fff', fontWeight: '800' },
-  cardBreed: { fontSize: 15, color: 'rgba(255,255,255,0.8)', marginTop: 3 },
-  cardTagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
+  matchPillText: { fontSize: 12, color: '#fff', fontWeight: '700', letterSpacing: 0.2 },
+  cardBreed: { fontSize: 14, color: 'rgba(255,255,255,0.72)', marginTop: 4, fontWeight: '400' },
+  cardTagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 8 },
   cardTag: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: borderRadius.full, paddingVertical: 3, paddingHorizontal: 10,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: borderRadius.full, paddingVertical: 4, paddingHorizontal: 10,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
   },
-  cardTagText: { fontSize: 12, color: '#fff', fontWeight: '600' },
-  cardOwner: { fontSize: 13, color: 'rgba(255,255,255,0.65)' },
-  scrollHint: { alignItems: 'center', marginTop: spacing.xs },
-  scrollHintText: { fontSize: 12, color: 'rgba(255,255,255,0.5)', fontWeight: '600' },
+  cardTagText: { fontSize: 12, color: 'rgba(255,255,255,0.88)', fontWeight: '500' },
+  cardOwner: { fontSize: 13, color: 'rgba(255,255,255,0.55)', marginTop: 2 },
+  scrollHint: { alignItems: 'center', marginTop: spacing.sm },
+  scrollHintText: { fontSize: 11, color: 'rgba(255,255,255,0.38)', fontWeight: '500', letterSpacing: 0.5 },
 
   // Profile details section
   details: {
