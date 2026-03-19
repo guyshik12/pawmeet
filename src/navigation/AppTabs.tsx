@@ -10,6 +10,7 @@ import FriendProfileScreen, { FriendProfileParams } from '../screens/friends/Fri
 import ProfileScreen from '../screens/profile/ProfileScreen';
 import WalksScreen from '../screens/walks/WalksScreen';
 import ChatScreen from '../screens/chat/ChatScreen';
+import PackChatScreen from '../screens/chat/PackChatScreen';
 import CreatePackScreen from '../screens/friends/CreatePackScreen';
 import DogPickerModal from '../components/DogPickerModal';
 import AddEditDogModal from '../screens/dogs/AddEditDogModal';
@@ -63,19 +64,6 @@ export type FriendsStackParamList = {
   [Routes.CreatePack]: undefined;
 };
 
-function PackChatPlaceholder() {
-  return (
-    <View style={placeholderStyles.container}>
-      <Text style={placeholderStyles.text}>Pack Chat — coming soon</Text>
-    </View>
-  );
-}
-
-
-const placeholderStyles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
-  text: { fontSize: 16, color: colors.textSecondary },
-});
 
 const Tab = createBottomTabNavigator<AppTabsParamList>();
 const FriendsStack = createNativeStackNavigator<FriendsStackParamList>();
@@ -98,8 +86,7 @@ function FriendsNavigator() {
       <FriendsStack.Screen name={Routes.Chat} component={ChatScreen} />
       <FriendsStack.Screen
         name={Routes.PackChat}
-        component={PackChatPlaceholder}
-        options={({ route }: any) => ({ title: route.params?.packName ?? 'Pack Chat' })}
+        component={PackChatScreen}
       />
       <FriendsStack.Screen
         name={Routes.CreatePack}
