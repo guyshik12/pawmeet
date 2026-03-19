@@ -10,6 +10,7 @@ import FriendProfileScreen, { FriendProfileParams } from '../screens/friends/Fri
 import ProfileScreen from '../screens/profile/ProfileScreen';
 import WalksScreen from '../screens/walks/WalksScreen';
 import ChatScreen from '../screens/chat/ChatScreen';
+import CreatePackScreen from '../screens/friends/CreatePackScreen';
 import DogPickerModal from '../components/DogPickerModal';
 import AddEditDogModal from '../screens/dogs/AddEditDogModal';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -70,13 +71,6 @@ function PackChatPlaceholder() {
   );
 }
 
-function CreatePackPlaceholder() {
-  return (
-    <View style={placeholderStyles.container}>
-      <Text style={placeholderStyles.text}>Create Pack — coming soon</Text>
-    </View>
-  );
-}
 
 const placeholderStyles = StyleSheet.create({
   container: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
@@ -109,7 +103,7 @@ function FriendsNavigator() {
       />
       <FriendsStack.Screen
         name={Routes.CreatePack}
-        component={CreatePackPlaceholder}
+        component={CreatePackScreen}
         options={{ title: 'Start a Pack' }}
       />
     </FriendsStack.Navigator>
