@@ -36,6 +36,24 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
   const { toast, showToast, hideToast } = useToast();
   const [activeTab, setActiveTab] = useState(0);
 
+  React.useLayoutEffect(() => {
+    if (activeTab === 1) {
+      navigation.setOptions({
+        headerRight: () => (
+          <TouchableOpacity
+            onPress={() => navigation.navigate('CreatePack')}
+            style={{ marginRight: spacing.sm }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Text style={{ fontSize: 24, color: colors.primary }}>+</Text>
+          </TouchableOpacity>
+        ),
+      });
+    } else {
+      navigation.setOptions({ headerRight: undefined });
+    }
+  }, [activeTab]);
+
   // Keep a stable ref to navigation so the registered handler never captures a stale value.
   const navigationRef = React.useRef(navigation);
   navigationRef.current = navigation;
