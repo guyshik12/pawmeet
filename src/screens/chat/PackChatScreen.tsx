@@ -6,7 +6,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
 import { useDogStore } from '../../store/dogStore';
-import { sendPackMessage, getPackMembers, PackMemberInfo } from '../../services/packService';
+import { sendPackMessage, getPackMembers, PackMemberInfo, isPackLeader, getPendingRequestCount } from '../../services/packService';
 import { supabase } from '../../lib/supabase';
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 
@@ -35,23 +35,46 @@ export default function PackChatScreen({ route, navigation }: Props) {
   const [sending, setSending] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
-  useEffect(() => {
-    navigation.setOptions({
-      title: packName,
-      headerBackTitle: 'Back',
-      headerRight: () => (
-        <Text style={{ color: colors.textSecondary, fontSize: 12, marginRight: spacing.sm }}>
-          {memberCount} {memberCount === 1 ? 'member' : 'members'}
-        </Text>
-      ),
-    });
-  }, [packName, memberCount]);
-
   // Fetch pack members for dog name/photo lookup
   const { data: members = [] } = useQuery({
     queryKey: ['pack_members', packId],
     queryFn: () => getPackMembers(packId),
   });
+
+  const { data: userIsLeader = false } = useQuery({
+    queryKey: ['is_pack_leader', packId, user?.id],
+    queryFn: () => isPackLeader(packId, user!.id),
+    enabled: !!user,
+  });
+
+  const { data: pendingCount = 0 } = useQuery({
+    queryKey: ['pending_request_count', packId],
+    queryFn: () => getPendingRequestCount(packId),
+    enabled: !!user && userIsLeader,
+    refetchInterval: 15000,
+  });
+
+  useEffect(() => {
+    navigation.setOptions({
+      title: packName,
+      headerBackTitle: 'Back',
+      headerRight: () => (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginRight: spacing.sm }}>
+          {userIsLeader && pendingCount > 0 && (
+            <TouchableOpacity
+              style={{ backgroundColor: colors.primary, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 }}
+              onPress={() => navigation.navigate('PackRequests', { packId, packName })}
+            >
+              <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{pendingCount} pending →</Text>
+            </TouchableOpacity>
+          )}
+          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+            {memberCount} {memberCount === 1 ? 'member' : 'members'}
+          </Text>
+        </View>
+      ),
+    });
+  }, [packName, memberCount, userIsLeader, pendingCount]);
 
   // Build dogId → { name, photo } map
   const memberMap = React.useMemo(() => {
