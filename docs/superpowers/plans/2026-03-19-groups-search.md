@@ -1461,6 +1461,7 @@ function SearchResultsList({
   }
 
   return (
+    <>
     <ScrollView
       style={{ flex: 1 }}
       contentContainerStyle={{ padding: spacing.md, paddingBottom: 40 }}
@@ -1578,6 +1579,7 @@ function SearchResultsList({
       )}
     </ScrollView>
 
+    {/* Pack preview bottom sheet — sibling to ScrollView, both inside the <> fragment */}
     {/* Pack preview bottom sheet */}
     {previewPack && (
       <TouchableWithoutFeedback onPress={closePackPreview}>
@@ -1627,6 +1629,7 @@ function SearchResultsList({
         </View>
       )}
     </Animated.View>
+    </>
   );
 }
 
