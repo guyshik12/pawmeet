@@ -3,7 +3,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Routes } from '../constants/routes';
 import { colors } from '../constants/theme';
-import { Text, TouchableOpacity, Image, View } from 'react-native';
+import { Text, TouchableOpacity, Image, View, StyleSheet } from 'react-native';
 import DiscoverScreen from '../screens/discover/DiscoverScreen';
 import FriendsScreen from '../screens/friends/FriendsScreen';
 import FriendProfileScreen, { FriendProfileParams } from '../screens/friends/FriendProfileScreen';
@@ -21,7 +21,9 @@ import { supabase } from '../lib/supabase';
 import MatchModal, { MatchModalData } from '../components/MatchModal';
 import InAppMessageBanner, { MessageBannerData } from '../components/InAppMessageBanner';
 import { registerPushToken } from '../services/notificationService';
-import { activeChatFriendshipId } from '../services/activeChatRef';
+import { activeChatFriendshipId, openFriendsChat } from '../services/activeChatRef';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { endTrip } from '../services/locationService';
 import { navigationRef } from '../services/navigationRef';
 
 const TabIcon = ({ emoji, focused }: { emoji: string; focused: boolean }) => (
@@ -56,7 +58,30 @@ export type FriendsStackParamList = {
   [Routes.Friends]: undefined;
   [Routes.FriendProfile]: FriendProfileParams;
   [Routes.Chat]: { friendshipId: string; friendName: string; friendDogName: string; isUserA: boolean };
+  [Routes.PackChat]: { packId: string; packName: string; memberCount: number };
+  [Routes.CreatePack]: undefined;
 };
+
+function PackChatPlaceholder() {
+  return (
+    <View style={placeholderStyles.container}>
+      <Text style={placeholderStyles.text}>Pack Chat — coming soon</Text>
+    </View>
+  );
+}
+
+function CreatePackPlaceholder() {
+  return (
+    <View style={placeholderStyles.container}>
+      <Text style={placeholderStyles.text}>Create Pack — coming soon</Text>
+    </View>
+  );
+}
+
+const placeholderStyles = StyleSheet.create({
+  container: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
+  text: { fontSize: 16, color: colors.textSecondary },
+});
 
 const Tab = createBottomTabNavigator<AppTabsParamList>();
 const FriendsStack = createNativeStackNavigator<FriendsStackParamList>();
@@ -77,6 +102,16 @@ function FriendsNavigator() {
         options={({ route }: any) => ({ title: route.params?.dog?.name ?? 'Profile' })}
       />
       <FriendsStack.Screen name={Routes.Chat} component={ChatScreen} />
+      <FriendsStack.Screen
+        name={Routes.PackChat}
+        component={PackChatPlaceholder}
+        options={({ route }: any) => ({ title: route.params?.packName ?? 'Pack Chat' })}
+      />
+      <FriendsStack.Screen
+        name={Routes.CreatePack}
+        component={CreatePackPlaceholder}
+        options={{ title: 'Start a Pack' }}
+      />
     </FriendsStack.Navigator>
   );
 }
@@ -90,18 +125,37 @@ export default function AppTabs() {
   const { dogs, currentDog, setDogs, isOnTrip, lastDiscoverMatchMs } = useDogStore();
   const dog = currentDog();
   const seenFriendshipIds = React.useRef<Set<string>>(new Set());
-  const [matchData, setMatchData] = React.useState<MatchModalData | null>(null);
+  const [matchData, setMatchData] = React.useState<(MatchModalData & { friendshipId?: string; friendName?: string; isUserA?: boolean }) | null>(null);
   const isOnTripRef = React.useRef(isOnTrip);
   const lastDiscoverMatchMsRef = React.useRef(lastDiscoverMatchMs);
+  const userRef = React.useRef(user);
+  const prevDogIdRef = React.useRef<string | null | undefined>(dog?.id);
   useEffect(() => { lastDiscoverMatchMsRef.current = lastDiscoverMatchMs; }, [lastDiscoverMatchMs]);
+  useEffect(() => { userRef.current = user; }, [user]);
   const activeDogIds = dog ? [dog.id] : [];
 
   // Load dogs immediately on auth — so all tabs have fresh data from the start
   useQuery({
     queryKey: ['dogs', user?.id],
     queryFn: async () => {
+      const prevId = prevDogIdRef.current;
       const data = await getDogs(user!.id);
       setDogs(data);
+      const newId = useDogStore.getState().currentDogId;
+      // Notify user if their active dog was auto-switched (e.g. after deleting a dog)
+      if (prevId && newId && prevId !== newId) {
+        const newDog = data.find((d) => d.id === newId);
+        if (newDog) {
+          setBannerData({
+            friendDogName: newDog.name,
+            friendshipId: '',
+            friendName: '',
+            isUserA: true,
+            message: `Active dog switched to ${newDog.name}`,
+          });
+        }
+      }
+      prevDogIdRef.current = newId;
       return data;
     },
     enabled: !!user,
@@ -111,6 +165,23 @@ export default function AppTabs() {
   // Register push token once after login
   useEffect(() => {
     if (user) registerPushToken(user.id);
+  }, [user?.id]);
+
+  // Clean up any stale trip left over from a previous app crash.
+  // Runs here (not WalksScreen) so it fires regardless of which tab the user opens first.
+  useEffect(() => {
+    if (!user) return;
+    AsyncStorage.getItem('trip_running').then((savedUserId) => {
+      if (savedUserId) {
+        AsyncStorage.removeItem('trip_running');
+        // Only clean up the trip if it belongs to the current user.
+        // A different user's stale key can't be cleaned via RLS anyway.
+        if (savedUserId === user.id) {
+          endTrip(savedUserId).catch(() => {});
+          useDogStore.getState().setIsOnTrip(false);
+        }
+      }
+    });
   }, [user?.id]);
 
   const { data: pendingCount = 0 } = useQuery({
@@ -139,7 +210,7 @@ export default function AppTabs() {
     const interval = setInterval(async () => {
       const { data } = await supabase
         .from('friendships')
-        .select('id, dog_a, dog_b')
+        .select('id, dog_a, dog_b, user_a, user_b')
         .or(`dog_a.eq.${dog.id},dog_b.eq.${dog.id}`)
         .order('created_at', { ascending: false })
         .limit(10);
@@ -148,13 +219,20 @@ export default function AppTabs() {
           seenFriendshipIds.current.add(f.id);
           if (Date.now() - lastDiscoverMatchMsRef.current < 5000) break; // Discover just showed it
           const friendDogId = f.dog_a === dog.id ? f.dog_b : f.dog_a;
-          const { data: friendDog } = await supabase
-            .from('dogs').select('name, photo_url').eq('id', friendDogId).single();
+          const friendUserId = f.dog_a === dog.id ? f.user_b : f.user_a;
+          const iAmA = f.user_a === userRef.current?.id;
+          const [{ data: friendDog }, { data: friendProfile }] = await Promise.all([
+            supabase.from('dogs').select('name, photo_url').eq('id', friendDogId).single(),
+            supabase.from('profiles').select('name').eq('id', friendUserId).single(),
+          ]);
           setMatchData({
             myDogName: dog.name,
             myDogPhoto: dog.photo_url ?? null,
             theirDogName: friendDog?.name ?? 'New friend',
             theirDogPhoto: friendDog?.photo_url ?? null,
+            friendshipId: f.id,
+            friendName: (friendProfile as any)?.name ?? '',
+            isUserA: iAmA,
           });
           break;
         }
@@ -167,9 +245,6 @@ export default function AppTabs() {
   useEffect(() => {
     const channel = supabase
       .channel('badge_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'friend_requests' }, () => {
-        queryClient.invalidateQueries({ queryKey: ['badge_count'] });
-      })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'friendships' }, async (payload: any) => {
         const row = payload.new;
         if (!row || !dog) return;
@@ -179,19 +254,27 @@ export default function AppTabs() {
         queryClient.invalidateQueries({ queryKey: ['friends'] });
         if (Date.now() - lastDiscoverMatchMsRef.current < 5000) return; // Discover just showed it
         const friendDogId = row.dog_a === dog.id ? row.dog_b : row.dog_a;
-        const { data: friendDog } = await supabase
-          .from('dogs').select('name, photo_url').eq('id', friendDogId).single();
+        const friendUserId = row.dog_a === dog.id ? row.user_b : row.user_a;
+        const iAmA = row.user_a === userRef.current?.id;
+        const [{ data: friendDog }, { data: friendProfile }] = await Promise.all([
+          supabase.from('dogs').select('name, photo_url').eq('id', friendDogId).single(),
+          supabase.from('profiles').select('name').eq('id', friendUserId).single(),
+        ]);
         setMatchData({
           myDogName: dog.name,
           myDogPhoto: dog.photo_url ?? null,
           theirDogName: friendDog?.name ?? 'New friend',
           theirDogPhoto: friendDog?.photo_url ?? null,
+          friendshipId: row.id,
+          friendName: (friendProfile as any)?.name ?? '',
+          isUserA: iAmA,
         });
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async (payload: any) => {
         queryClient.invalidateQueries({ queryKey: ['badge_count'] });
         const msg = payload.new;
-        if (!msg || !user || msg.sender_id === user.id) return;
+        const currentUser = userRef.current;
+        if (!msg || !currentUser || msg.sender_id === currentUser.id || msg.pack_id) return;
         // Don't show banner if user is already in that chat
         if (activeChatFriendshipId === msg.friendship_id) return;
         // Look up friendship to get friend dog name
@@ -201,7 +284,7 @@ export default function AppTabs() {
           .eq('id', msg.friendship_id)
           .single() as any;
         if (!friendship) return;
-        const iAmA = (friendship as any).user_a === user.id;
+        const iAmA = (friendship as any).user_a === currentUser.id;
         const friendDogId = iAmA ? (friendship as any).dog_b : (friendship as any).dog_a;
         const friendUserId = iAmA ? (friendship as any).user_b : (friendship as any).user_a;
         const { data: friendDog } = await supabase
@@ -216,7 +299,11 @@ export default function AppTabs() {
           message: msg.content ?? '',
         });
       })
-      .subscribe();
+      .subscribe((status, err) => {
+        if (status === 'CHANNEL_ERROR') {
+          console.warn('[AppTabs] Realtime channel error — Supabase will retry:', err);
+        }
+      });
     return () => { supabase.removeChannel(channel); };
   }, [dog?.id]);
 
@@ -251,6 +338,7 @@ export default function AppTabs() {
           options={{
             headerShown: false,
             title: 'Friends',
+            lazy: false,
             tabBarIcon: ({ focused }) => <TabIcon emoji="🐶" focused={focused} />,
             tabBarBadge: pendingCount > 0 ? pendingCount : undefined,
           }}
@@ -302,23 +390,43 @@ export default function AppTabs() {
         theirDogName={matchData?.theirDogName ?? ''}
         theirDogPhoto={matchData?.theirDogPhoto ?? null}
         onClose={() => setMatchData(null)}
+        onChat={matchData?.friendshipId ? () => {
+          const params = {
+            friendshipId: matchData.friendshipId!,
+            friendName: matchData.friendName ?? '',
+            friendDogName: matchData.theirDogName,
+            isUserA: matchData.isUserA ?? true,
+          };
+          setMatchData(null);
+          if (navigationRef.isReady()) {
+            navigationRef.navigate('FriendsStack');
+            if (openFriendsChat) {
+              openFriendsChat(params);
+            } else {
+              navigationRef.navigate('FriendsStack', { screen: Routes.Chat, params });
+            }
+          }
+        } : undefined}
       />
 
       <InAppMessageBanner
         data={bannerData}
         onDismiss={() => setBannerData(null)}
         onPress={(d) => {
+          const params = {
+            friendshipId: d.friendshipId,
+            friendName: d.friendName,
+            friendDogName: d.friendDogName,
+            isUserA: d.isUserA,
+          };
           setBannerData(null);
           if (navigationRef.isReady()) {
-            navigationRef.navigate('FriendsStack', {
-              screen: Routes.Chat,
-              params: {
-                friendshipId: d.friendshipId,
-                friendName: d.friendName,
-                friendDogName: d.friendDogName,
-                isUserA: d.isUserA,
-              },
-            });
+            navigationRef.navigate('FriendsStack');
+            if (openFriendsChat) {
+              openFriendsChat(params);
+            } else {
+              navigationRef.navigate('FriendsStack', { screen: Routes.Chat, params });
+            }
           }
         }}
       />
