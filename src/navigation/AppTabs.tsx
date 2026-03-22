@@ -4,7 +4,8 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Routes } from '../constants/routes';
 import { colors } from '../constants/theme';
 import { Text, TouchableOpacity, Image, View, StyleSheet } from 'react-native';
-import DiscoverScreen from '../screens/discover/DiscoverScreen';
+import DiscoveryHubScreen from '../screens/discover/DiscoveryHubScreen';
+import QuickMatchScreen from '../screens/discover/QuickMatchScreen';
 import FriendsScreen from '../screens/friends/FriendsScreen';
 import FriendProfileScreen, { FriendProfileParams } from '../screens/friends/FriendProfileScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
@@ -70,6 +71,32 @@ export type FriendsStackParamList = {
 
 const Tab = createBottomTabNavigator<AppTabsParamList>();
 const FriendsStack = createNativeStackNavigator<FriendsStackParamList>();
+
+const DiscoverStack = createNativeStackNavigator();
+
+function DiscoverNavigator() {
+  return (
+    <DiscoverStack.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: '#121212' },
+        headerTintColor: '#FFB347',
+        headerTitleStyle: { fontWeight: '700' },
+        headerShadowVisible: false,
+      }}
+    >
+      <DiscoverStack.Screen
+        name="DiscoverHub"
+        component={DiscoveryHubScreen}
+        options={{ headerShown: false }}
+      />
+      <DiscoverStack.Screen
+        name={Routes.QuickMatch}
+        component={QuickMatchScreen}
+        options={{ title: 'Quick Match', headerBackTitle: ' ' }}
+      />
+    </DiscoverStack.Navigator>
+  );
+}
 
 function FriendsNavigator() {
   return (
@@ -325,9 +352,9 @@ export default function AppTabs() {
         }}
       >
         <Tab.Screen
-          name={Routes.Discover}
-          component={DiscoverScreen}
-          options={{ title: 'Discover', tabBarIcon: ({ focused }) => <TabIcon emoji="🐾" focused={focused} /> }}
+          name="DiscoverStack"
+          component={DiscoverNavigator}
+          options={{ headerShown: false, title: 'Discover', tabBarIcon: ({ focused }) => <TabIcon emoji="🐾" focused={focused} /> }}
         />
         <Tab.Screen
           name="FriendsStack"
