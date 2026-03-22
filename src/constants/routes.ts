@@ -23,6 +23,8 @@ export const Routes = {
   PackChat: 'PackChat',
   CreatePack: 'CreatePack',
   PackRequests: 'PackRequests',
+  QuickMatch: 'QuickMatch',
+  OpenPacks: 'OpenPacks',
 } as const;
 
 export type RouteKeys = keyof typeof Routes;
