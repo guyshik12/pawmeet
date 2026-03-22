@@ -16,7 +16,7 @@ export type SearchOwnerResult = {
   ownerId: string;
   ownerName: string;
   ownerPhoto: string | null;
-  dogs: { name: string; breed: string | null }[];
+  dogs: { id: string; name: string; breed: string | null; photo: string | null }[];
 };
 
 export type SearchBreedResult = {
@@ -92,7 +92,7 @@ export async function searchAll(query: string, currentUserId: string, currentDog
     ownerPhoto: p.photo_url ?? null,
     dogs: (dogsRaw ?? [])
       .filter((d: any) => d.owner?.id === p.id)
-      .map((d: any) => ({ name: d.name, breed: d.breed ?? null })),
+      .map((d: any) => ({ id: d.id, name: d.name, breed: d.breed ?? null, photo: d.photo_url ?? null })),
   }));
 
   // Build breeds from dog results
