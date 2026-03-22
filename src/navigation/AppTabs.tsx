@@ -25,6 +25,7 @@ import MatchModal, { MatchModalData } from '../components/MatchModal';
 import InAppMessageBanner, { MessageBannerData } from '../components/InAppMessageBanner';
 import { registerPushToken } from '../services/notificationService';
 import { activeChatFriendshipId, openFriendsChat } from '../services/activeChatRef';
+import { useUnreadStore } from '../store/unreadStore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { endTrip } from '../services/locationService';
 import { navigationRef } from '../services/navigationRef';
@@ -79,7 +80,7 @@ function FriendsNavigator() {
         headerTitleStyle: { fontWeight: '700' },
       }}
     >
-      <FriendsStack.Screen name={Routes.Friends} component={FriendsScreen} options={{ title: 'Friends' }} />
+      <FriendsStack.Screen name={Routes.Friends} component={FriendsScreen} options={{ title: 'Friends', headerBackTitle: 'Packs' }} />
       <FriendsStack.Screen
         name={Routes.FriendProfile}
         component={FriendProfileScreen}
@@ -89,6 +90,7 @@ function FriendsNavigator() {
       <FriendsStack.Screen
         name={Routes.PackChat}
         component={PackChatScreen}
+        options={{ title: ' ', headerBackTitle: ' ' }}
       />
       <FriendsStack.Screen
         name={Routes.CreatePack}
@@ -98,7 +100,7 @@ function FriendsNavigator() {
       <FriendsStack.Screen
         name={Routes.PackRequests}
         component={PackRequestsScreen}
-        options={{ title: 'Pack Requests' }}
+        options={{ title: 'Pack Requests', headerBackTitle: ' ' }}
       />
     </FriendsStack.Navigator>
   );
@@ -262,8 +264,15 @@ export default function AppTabs() {
         queryClient.invalidateQueries({ queryKey: ['badge_count'] });
         const msg = payload.new;
         const currentUser = userRef.current;
-        if (!msg || !currentUser || msg.sender_id === currentUser.id || msg.pack_id) return;
-        // Don't show banner if user is already in that chat
+        if (!msg || !currentUser || msg.sender_id === currentUser.id) return;
+
+        // Increment global unread count (friend + pack messages)
+        if (!(msg.friendship_id && activeChatFriendshipId === msg.friendship_id)) {
+          useUnreadStore.getState().increment();
+        }
+
+        // Banner logic — only for friend DMs, not pack messages
+        if (msg.pack_id) return;
         if (activeChatFriendshipId === msg.friendship_id) return;
         // Look up friendship to get friend dog name
         const { data: friendship } = await supabase
