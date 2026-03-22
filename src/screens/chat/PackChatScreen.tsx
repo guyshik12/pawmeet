@@ -6,8 +6,10 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
 import { useDogStore } from '../../store/dogStore';
+import { useUnreadStore } from '../../store/unreadStore';
 import { sendPackMessage, getPackMembers, PackMemberInfo, isPackLeader, getPendingRequestCount } from '../../services/packService';
 import { supabase } from '../../lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 
 type Props = {
@@ -21,6 +23,7 @@ type PackMessage = {
   sender_dog_id: string | null;
   content: string;
   created_at: string;
+  type: 'message' | 'system';
 };
 
 const AVATAR_SIZE = 32;
@@ -34,6 +37,19 @@ export default function PackChatScreen({ route, navigation }: Props) {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const flatListRef = useRef<FlatList>(null);
+
+  // Fetch pack photo
+  const { data: packPhotoUrl } = useQuery({
+    queryKey: ['pack_photo', packId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('packs')
+        .select('photo_url')
+        .eq('id', packId)
+        .single();
+      return (data as any)?.photo_url ?? null;
+    },
+  });
 
   // Fetch pack members for dog name/photo lookup
   const { data: members = [] } = useQuery({
@@ -54,27 +70,47 @@ export default function PackChatScreen({ route, navigation }: Props) {
     refetchInterval: 15000,
   });
 
+  const unreadCount = useUnreadStore((s) => s.count);
+
   useEffect(() => {
     navigation.setOptions({
-      title: packName,
-      headerBackTitle: 'Back',
-      headerRight: () => (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginRight: spacing.sm }}>
-          {userIsLeader && pendingCount > 0 && (
-            <TouchableOpacity
-              style={{ backgroundColor: colors.primary, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 }}
-              onPress={() => navigation.navigate('PackRequests', { packId, packName })}
-            >
-              <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{pendingCount} pending →</Text>
-            </TouchableOpacity>
+      headerLargeTitle: false,
+      headerStyle: { backgroundColor: colors.surface },
+      headerLeft: () => (
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ flexDirection: 'row', alignItems: 'center', marginLeft: -4, gap: 6 }}>
+          <Text style={{ fontSize: 40, color: colors.primary, lineHeight: 40 }}>‹</Text>
+          {unreadCount > 0 ? (
+            <View style={{ backgroundColor: colors.primary, borderRadius: 9, paddingHorizontal: 5, paddingVertical: 1, marginLeft: 4 }}>
+              <Text style={{ fontSize: 12, color: '#fff', fontWeight: '700' }}>{unreadCount}</Text>
+            </View>
+          ) : null}
+          {packPhotoUrl ? (
+            <Image source={{ uri: packPhotoUrl }} style={{ width: 36, height: 36, borderRadius: 10 }} />
+          ) : (
+            <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colors.surfaceHigh, justifyContent: 'center', alignItems: 'center' }}>
+              <Text style={{ fontSize: 18 }}>🐾</Text>
+            </View>
           )}
-          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
-            {memberCount} {memberCount === 1 ? 'member' : 'members'}
-          </Text>
-        </View>
+        </TouchableOpacity>
       ),
+      headerTitle: () => (
+        <TouchableOpacity
+          onPress={() => navigation.navigate('PackRequests', { packId, packName })}
+          style={{ alignItems: 'center' }}
+        >
+          <Text style={{ color: colors.text, fontSize: 20, fontWeight: '700' }}>{packName}</Text>
+        </TouchableOpacity>
+      ),
+      headerRight: userIsLeader && pendingCount > 0 ? () => (
+        <TouchableOpacity
+          style={{ backgroundColor: colors.primary, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3, marginRight: spacing.sm }}
+          onPress={() => navigation.navigate('PackRequests', { packId, packName })}
+        >
+          <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{pendingCount} pending →</Text>
+        </TouchableOpacity>
+      ) : undefined,
     });
-  }, [packName, memberCount, userIsLeader, pendingCount]);
+  }, [packName, userIsLeader, pendingCount, unreadCount, packPhotoUrl]);
 
   // Build dogId → { name, photo } map
   const memberMap = React.useMemo(() => {
@@ -91,7 +127,7 @@ export default function PackChatScreen({ route, navigation }: Props) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('messages')
-        .select('id, sender_id, sender_dog_id, content, created_at')
+        .select('id, sender_id, sender_dog_id, content, created_at, type')
         .eq('pack_id', packId)
         .order('created_at', { ascending: true });
       if (error) throw error;
@@ -99,7 +135,7 @@ export default function PackChatScreen({ route, navigation }: Props) {
     },
   });
 
-  // Realtime
+  // Realtime — current pack messages
   useEffect(() => {
     const channel = supabase
       .channel(`pack_chat_${packId}`)
@@ -108,6 +144,8 @@ export default function PackChatScreen({ route, navigation }: Props) {
         filter: `pack_id=eq.${packId}`,
       }, () => {
         queryClient.invalidateQueries({ queryKey: ['pack_messages', packId] });
+        // Mark current pack as read immediately since we're viewing it
+        AsyncStorage.setItem(`pack_last_read_${packId}`, new Date().toISOString());
       })
       .subscribe((status, err) => {
         if (status === 'CHANNEL_ERROR') {
@@ -117,7 +155,20 @@ export default function PackChatScreen({ route, navigation }: Props) {
     return () => { supabase.removeChannel(channel); };
   }, [packId]);
 
-  // Scroll to bottom on new messages
+  useEffect(() => {
+    const cachedUnread = queryClient.getQueryData<Record<string, number>>(['pack_unread_counts', activeDog?.id, user?.id]);
+    if ((cachedUnread?.[packId] ?? 0) > 0) {
+      useUnreadStore.getState().decrement();
+      queryClient.setQueryData(['pack_unread_counts', activeDog?.id, user?.id], (old: Record<string, number> | undefined) => {
+        if (!old) return {};
+        const next = { ...old };
+        delete next[packId];
+        return next;
+      });
+    }
+    AsyncStorage.setItem(`pack_last_read_${packId}`, new Date().toISOString());
+  }, [packId]);
+
   useEffect(() => {
     if (messages.length > 0) {
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
@@ -132,6 +183,7 @@ export default function PackChatScreen({ route, navigation }: Props) {
     try {
       await sendPackMessage(packId, user.id, activeDog?.id ?? null, text);
       queryClient.invalidateQueries({ queryKey: ['pack_messages', packId] });
+      queryClient.invalidateQueries({ queryKey: ['pack_last_messages'] });
     } catch (e) {
       console.error('[PackChatScreen] sendPackMessage error:', e);
       setInput(text);
@@ -141,24 +193,45 @@ export default function PackChatScreen({ route, navigation }: Props) {
   };
 
   const renderItem = ({ item, index }: { item: PackMessage; index: number }) => {
+    if (item.type === 'system') {
+      return (
+        <View style={styles.systemRow}>
+          <Text style={styles.systemText}>{item.content}</Text>
+        </View>
+      );
+    }
+
     const isOwn = item.sender_id === user?.id;
     const prevItem = index > 0 ? messages[index - 1] : null;
     // Start of a streak: no previous message, or previous was from a different dog
     const isStreakStart =
       !prevItem ||
+      prevItem.type === 'system' ||
       (prevItem.sender_dog_id ?? prevItem.sender_id) !== (item.sender_dog_id ?? item.sender_id);
+
+    const dogInfo = item.sender_dog_id ? memberMap[item.sender_dog_id] : null;
 
     if (isOwn) {
       return (
         <View style={styles.ownRow}>
+          {isStreakStart && dogInfo && (
+            <View style={styles.ownIdentity}>
+              {dogInfo.photo ? (
+                <Image source={{ uri: dogInfo.photo }} style={styles.ownAvatar} />
+              ) : (
+                <View style={[styles.ownAvatar, styles.avatarPlaceholder]}>
+                  <Text style={{ fontSize: 12 }}>🐶</Text>
+                </View>
+              )}
+              <Text style={styles.ownDogName}>{dogInfo.name}</Text>
+            </View>
+          )}
           <View style={styles.ownBubble}>
             <Text style={styles.ownText}>{item.content}</Text>
           </View>
         </View>
       );
     }
-
-    const dogInfo = item.sender_dog_id ? memberMap[item.sender_dog_id] : null;
 
     return (
       <View style={styles.theirRow}>
@@ -242,6 +315,9 @@ const styles = StyleSheet.create({
   emptyText: { ...typography.body, color: colors.textSecondary },
   messageList: { padding: spacing.md, paddingBottom: spacing.lg },
   ownRow: { alignItems: 'flex-end', marginBottom: 4 },
+  ownIdentity: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginBottom: 3, marginRight: 4 },
+  ownAvatar: { width: 20, height: 20, borderRadius: 10 },
+  ownDogName: { fontSize: 11, color: colors.textSecondary },
   ownBubble: {
     backgroundColor: colors.primary,
     borderRadius: 16,
@@ -312,4 +388,15 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: { backgroundColor: colors.surfaceHigh },
   sendBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  systemRow: {
+    alignItems: 'center',
+    marginVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+  },
+  systemText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
 });
