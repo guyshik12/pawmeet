@@ -221,12 +221,21 @@ export async function getUnreadCountsPerFriendship(
 ): Promise<Record<string, number>> {
   if (!friendships.length) return {};
 
-  // Single query for all messages across all friendships
+  // Find the oldest per-user read cutoff so we can filter server-side
+  const cutoffs = friendships.map((f) => {
+    const isA = f.user_a === userId;
+    return isA ? (f.user_a_last_read ?? '1970-01-01') : (f.user_b_last_read ?? '1970-01-01');
+  });
+  const oldestCutoff = cutoffs.reduce((min, c) => (c < min ? c : min), cutoffs[0]);
+
+  // Single query — only fetch messages newer than the oldest read marker
   const { data: messages } = await supabase
     .from('messages')
     .select('friendship_id, created_at')
     .in('friendship_id', friendships.map((f) => f.id))
-    .neq('sender_id', userId);
+    .neq('sender_id', userId)
+    .gte('created_at', oldestCutoff)
+    .limit(500);
 
   const result: Record<string, number> = {};
   for (const f of friendships) {
@@ -251,23 +260,96 @@ export async function getTotalBadgeCount(myDogId: string | null, userId: string)
 }
 
 /**
- * Server-side RPC that inserts a like, detects mutual likes, and creates a
- * friendship — runs with SECURITY DEFINER so RLS doesn't block the mutual-like check.
+ * Sends a like from senderDog → receiverDog.
+ * Uses the server-side RPC to insert the like and attempt friendship creation,
+ * then independently verifies whether a friendship now exists so the result
+ * is reliable regardless of what format the RPC returns.
  */
 export async function handleDogLike(
   senderDogId: string,
   receiverDogId: string,
   senderId: string,
   receiverId: string,
-): Promise<{ matched: boolean }> {
-  const { data, error } = await supabase.rpc('handle_dog_like', {
-    p_sender_dog_id: senderDogId,
-    p_receiver_dog_id: receiverDogId,
-    p_sender_id: senderId,
-    p_receiver_id: receiverId,
+): Promise<{ matched: boolean; friendshipId?: string; isUserA?: boolean }> {
+  // Insert our like.
+  const { error: insertErr } = await supabase.from('friend_requests').insert({
+    sender_dog_id: senderDogId,
+    receiver_dog_id: receiverDogId,
+    sender_id: senderId,
+    receiver_id: receiverId,
+    status: 'pending',
   });
+  if (insertErr && !insertErr.message.includes('duplicate') && !insertErr.message.includes('unique')) {
+    throw insertErr;
+  }
+
+  // Check if a DB trigger auto-created the friendship already.
+  const { data: fa } = await supabase.from('friendships').select('id, user_a')
+    .eq('dog_a', senderDogId).eq('dog_b', receiverDogId).maybeSingle();
+  const { data: fb } = !fa ? await supabase.from('friendships').select('id, user_a')
+    .eq('dog_a', receiverDogId).eq('dog_b', senderDogId).maybeSingle() : { data: null };
+  const auto = fa ?? fb;
+  if (auto) return { matched: true, friendshipId: auto.id, isUserA: auto.user_a === senderId };
+
+  // No auto-friendship — check if the other dog already liked us back.
+  const { data: reverseRequest } = await supabase
+    .from('friend_requests')
+    .select('id')
+    .eq('sender_dog_id', receiverDogId)
+    .eq('receiver_dog_id', senderDogId)
+    .maybeSingle();
+  if (!reverseRequest) return { matched: false };
+
+  // One final check — the DB trigger may have created the friendship while we were checking.
+  const { data: fc } = await supabase.from('friendships').select('id, user_a')
+    .eq('dog_a', senderDogId).eq('dog_b', receiverDogId).maybeSingle();
+  const { data: fd } = !fc ? await supabase.from('friendships').select('id, user_a')
+    .eq('dog_a', receiverDogId).eq('dog_b', senderDogId).maybeSingle() : { data: null };
+  const preExisting = fc ?? fd;
+  if (preExisting) return { matched: true, friendshipId: preExisting.id, isUserA: preExisting.user_a === senderId };
+
+  // Mutual like confirmed — create friendship ourselves.
+  const { data: created, error: friendError } = await supabase
+    .from('friendships')
+    .insert({ dog_a: senderDogId, dog_b: receiverDogId, user_a: senderId, user_b: receiverId })
+    .select('id')
+    .single();
+
+  // If DB trigger raced us and already created the friendship, fetch it instead of throwing.
+  if (friendError) {
+    if (friendError.message.includes('duplicate') || friendError.message.includes('unique')) {
+      const { data: fa2 } = await supabase.from('friendships').select('id, user_a')
+        .eq('dog_a', senderDogId).eq('dog_b', receiverDogId).maybeSingle();
+      const { data: fb2 } = !fa2 ? await supabase.from('friendships').select('id, user_a')
+        .eq('dog_a', receiverDogId).eq('dog_b', senderDogId).maybeSingle() : { data: null };
+      const existing = fa2 ?? fb2;
+      if (existing) return { matched: true, friendshipId: existing.id, isUserA: existing.user_a === senderId };
+    }
+    throw friendError;
+  }
+
+  return { matched: true, friendshipId: created?.id, isUserA: true };
+}
+
+export async function unfriendship(friendshipId: string): Promise<void> {
+  // Chain .select() so Supabase returns the deleted rows.
+  // If RLS silently blocks the delete, data will be empty and we can surface a real error.
+  const { data, error } = await supabase
+    .from('friendships')
+    .delete()
+    .eq('id', friendshipId)
+    .select('id, dog_a, dog_b');
   if (error) throw error;
-  return data as { matched: boolean };
+  if (!data || data.length === 0) {
+    throw new Error('Could not remove park pal — make sure you have permission.');
+  }
+
+  // Clean up friend_requests so re-liking works in Discover (two separate deletes — nested .or() is broken in Supabase JS).
+  const { dog_a, dog_b } = data[0];
+  await supabase.from('friend_requests').delete()
+    .eq('sender_dog_id', dog_a).eq('receiver_dog_id', dog_b);
+  await supabase.from('friend_requests').delete()
+    .eq('sender_dog_id', dog_b).eq('receiver_dog_id', dog_a);
 }
 
 /** Returns a map of receiverDogId → status for requests sent from any of my dogs */
