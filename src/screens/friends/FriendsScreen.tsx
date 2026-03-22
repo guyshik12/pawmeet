@@ -7,6 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CommonActions } from '@react-navigation/native';
 import { useAuthStore } from '../../store/authStore';
 import { useDogStore } from '../../store/dogStore';
+import { useUnreadStore } from '../../store/unreadStore';
 import { getFriends, getUnreadCountsPerFriendship } from '../../services/friendService';
 import { sendMessage } from '../../services/chatService';
 import { supabase } from '../../lib/supabase';
@@ -18,6 +19,7 @@ import SegmentedControl from '../../components/SegmentedControl';
 import PackCard from '../../components/PackCard';
 import { getPacks, PackWithMembers, joinPack, createJoinRequest } from '../../services/packService';
 import { searchAll, SearchResults, SearchPackResult } from '../../services/searchService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 function statusRingColor(status: 'active' | 'looking' | 'offline'): string {
   switch (status) {
@@ -104,17 +106,16 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
 
   React.useLayoutEffect(() => {
     navigation.setOptions({
+      headerBackTitle: activeTab === 1 ? 'Packs' : 'Friends',
+      headerLeft: activeTab === 1 ? () => (
+        <TouchableOpacity onPress={() => navigation.navigate('CreatePack')} style={{ marginLeft: spacing.sm }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Text style={{ fontSize: 24, color: colors.primary }}>+</Text>
+        </TouchableOpacity>
+      ) : undefined,
       headerRight: () => (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginRight: spacing.sm }}>
-          <TouchableOpacity onPress={openSearch} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Text style={{ fontSize: 20 }}>🔍</Text>
-          </TouchableOpacity>
-          {activeTab === 1 && (
-            <TouchableOpacity onPress={() => navigation.navigate('CreatePack')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Text style={{ fontSize: 24, color: colors.primary }}>+</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        <TouchableOpacity onPress={openSearch} style={{ marginRight: spacing.sm }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Text style={{ fontSize: 20 }}>🔍</Text>
+        </TouchableOpacity>
       ),
     });
   }, [activeTab]);
@@ -154,40 +155,131 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
     refetchInterval: 30000,
   });
 
-  const { data: lastMessages = {} } = useQuery({
+  const { data: lastMessagesData = { texts: {}, times: {} } } = useQuery({
     queryKey: ['last_messages', user?.id, myDogIds.join()],
     queryFn: async () => {
       const ids = friends.map((f) => f.id);
-      if (!ids.length) return {} as Record<string, string>;
+      if (!ids.length) return { texts: {} as Record<string, string>, times: {} as Record<string, string> };
       const { data } = await supabase
         .from('messages')
-        .select('friendship_id, content, sender_id')
+        .select('friendship_id, content, sender_id, created_at')
         .in('friendship_id', ids)
         .order('created_at', { ascending: false })
         .limit(100);
-      const result: Record<string, string> = {};
+      const texts: Record<string, string> = {};
+      const times: Record<string, string> = {};
       for (const msg of data ?? []) {
-        if (!result[msg.friendship_id]) {
-          result[msg.friendship_id] = msg.sender_id === userId ? `You: ${msg.content}` : (msg.content ?? '');
+        if (!texts[msg.friendship_id]) {
+          texts[msg.friendship_id] = msg.sender_id === userId ? `You: ${msg.content}` : (msg.content ?? '');
+          times[msg.friendship_id] = msg.created_at;
         }
       }
-      return result;
+      return { texts, times };
     },
     enabled: !!user && friends.length > 0,
     refetchInterval: 30000,
   });
+  const lastMessages = lastMessagesData.texts;
+  const lastMessageTimes = lastMessagesData.times;
 
   const { data: packs = [] } = useQuery({
-    queryKey: ['packs', user?.id],
-    queryFn: () => getPacks(userId),
-    enabled: !!user,
+    queryKey: ['packs', activeDog?.id],
+    queryFn: () => getPacks(activeDog!.id),
+    enabled: !!user && !!activeDog,
   });
+
+  // Pack last messages: { packId: "DogName: message" } + timestamps
+  const { data: packLastMessagesData = { texts: {}, times: {} } } = useQuery({
+    queryKey: ['pack_last_messages', activeDog?.id],
+    queryFn: async () => {
+      const packIds = packs.map((p) => p.id);
+      if (!packIds.length) return { texts: {} as Record<string, string>, times: {} as Record<string, string> };
+      const { data } = await supabase
+        .from('messages')
+        .select('pack_id, sender_id, sender_dog_id, content, type, created_at')
+        .in('pack_id', packIds)
+        .eq('type', 'message')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      const texts: Record<string, string> = {};
+      const times: Record<string, string> = {};
+      for (const msg of (data ?? []) as any[]) {
+        if (!texts[msg.pack_id]) {
+          const pack = packs.find((p) => p.id === msg.pack_id);
+          const member = pack?.members.find((m) => m.dogId === msg.sender_dog_id);
+          const dogName = msg.sender_id === userId ? 'You' : (member?.dogName ?? 'Someone');
+          texts[msg.pack_id] = `${dogName}: ${msg.content}`;
+          times[msg.pack_id] = msg.created_at;
+        }
+      }
+      return { texts, times };
+    },
+    enabled: !!user && packs.length > 0,
+    refetchInterval: 10000,
+    refetchOnWindowFocus: true,
+  });
+
+  const packLastMessages = packLastMessagesData.texts;
+  const packLastMessageTimes = packLastMessagesData.times;
+
+  // Pack unread counts: { packId: number } — uses per-pack last_read from AsyncStorage
+  const { data: packUnreadCounts = {} } = useQuery({
+    queryKey: ['pack_unread_counts', activeDog?.id, userId],
+    queryFn: async () => {
+      const packIds = packs.map((p) => p.id);
+      if (!packIds.length) return {} as Record<string, number>;
+
+      // Load last-read timestamps from local storage
+      const keys = packIds.map((id) => `pack_last_read_${id}`);
+      const stored = await AsyncStorage.multiGet(keys);
+      const lastReadMap: Record<string, string> = {};
+      for (const [key, value] of stored) {
+        const packId = key.replace('pack_last_read_', '');
+        lastReadMap[packId] = value ?? '1970-01-01';
+      }
+
+      const fallback = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data } = await supabase
+        .from('messages')
+        .select('pack_id, created_at')
+        .in('pack_id', packIds)
+        .neq('sender_id', userId)
+        .eq('type', 'message')
+        .limit(500);
+
+      const counts: Record<string, number> = {};
+      for (const msg of (data ?? []) as any[]) {
+        const lastRead = lastReadMap[msg.pack_id] ?? fallback;
+        if (msg.created_at > lastRead) {
+          counts[msg.pack_id] = (counts[msg.pack_id] ?? 0) + 1;
+        }
+      }
+      return counts;
+    },
+    enabled: !!user && packs.length > 0,
+    refetchInterval: 30000,
+  });
+
+  const setUnreadCount = useUnreadStore((s) => s.setCount);
+  useEffect(() => {
+    const friendChatsWithUnread = Object.values(unreadCounts).filter((c) => c > 0).length;
+    const packChatsWithUnread = Object.values(packUnreadCounts).filter((c) => c > 0).length;
+    setUnreadCount(friendChatsWithUnread + packChatsWithUnread);
+  }, [unreadCounts, packUnreadCounts]);
 
   const sortedFriends = useMemo(() =>
     [...friends].sort((a, b) => {
-      const unreadDiff = (unreadCounts[b.id] ?? 0) - (unreadCounts[a.id] ?? 0);
-      return unreadDiff !== 0 ? unreadDiff : a.id.localeCompare(b.id);
-    }), [friends, unreadCounts]);
+      const timeA = lastMessageTimes[a.id] ?? '1970-01-01';
+      const timeB = lastMessageTimes[b.id] ?? '1970-01-01';
+      return timeB.localeCompare(timeA);
+    }), [friends, lastMessageTimes]);
+
+  const sortedPacks = useMemo(() =>
+    [...packs].sort((a, b) => {
+      const timeA = packLastMessageTimes[a.id] ?? '1970-01-01';
+      const timeB = packLastMessageTimes[b.id] ?? '1970-01-01';
+      return timeB.localeCompare(timeA);
+    }), [packs, packLastMessageTimes]);
 
   const woofMutation = useMutation({
     mutationFn: ({ friendshipId }: { friendshipId: string }) =>
@@ -195,6 +287,15 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
     onSuccess: () => showToast('Woof sent! 🐾', 'success'),
     onError: () => showToast('Could not send woof. Try again.', 'error'),
   });
+
+  // Refresh pack data when screen comes into focus (e.g. navigating back from chat)
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      queryClient.invalidateQueries({ queryKey: ['pack_last_messages'] });
+      queryClient.invalidateQueries({ queryKey: ['pack_unread_counts'] });
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   // Realtime subscription
   useEffect(() => {
@@ -206,6 +307,8 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => {
         queryClient.invalidateQueries({ queryKey: ['unread_counts'] });
+        queryClient.invalidateQueries({ queryKey: ['pack_last_messages'] });
+        queryClient.invalidateQueries({ queryKey: ['pack_unread_counts'] });
       })
       .subscribe((status, err) => {
         if (status === 'CHANNEL_ERROR') {
@@ -360,17 +463,19 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
                 </View>
               ) : (
                 <FlatList
-                  data={packs}
+                  data={sortedPacks}
                   keyExtractor={(p) => p.id}
                   contentContainerStyle={styles.list}
                   renderItem={({ item }) => (
                     <PackCard
                       packName={item.name}
+                      packPhoto={item.photo_url}
                       memberDogPhotos={item.members.slice(0, 3).map((m) => m.dogPhoto).filter(Boolean) as string[]}
                       memberCount={item.members.length}
-                      lastMessage={null}
+                      lastMessage={packLastMessages[item.id] ?? null}
+                      lastMessageTime={packLastMessageTimes[item.id] ?? null}
                       hasLiveMember={false}
-                      unreadCount={0}
+                      unreadCount={packUnreadCounts[item.id] ?? 0}
                       packType={item.type}
                       onPress={() => navigation.navigate('PackChat', { packId: item.id, packName: item.name, memberCount: item.members.length })}
                     />
