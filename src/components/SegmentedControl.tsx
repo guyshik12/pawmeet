@@ -7,23 +7,32 @@ type Props = {
   selectedIndex: number;
   onChange: (index: number) => void;
   style?: ViewStyle;
+  scrollFraction?: number; // 0 = first tab, 1 = second tab (driven by pager)
 };
 
-export default function SegmentedControl({ options, selectedIndex, onChange, style }: Props) {
+export default function SegmentedControl({ options, selectedIndex, onChange, style, scrollFraction }: Props) {
   const slideAnim = useRef(new Animated.Value(0)).current;
   const containerWidthRef = useRef(0);
   const itemWidthRef = useRef(0);
 
   useEffect(() => {
-    if (itemWidthRef.current > 0) {
+    // Only animate on tap (when scrollFraction is not provided or not being used)
+    if (scrollFraction === undefined && itemWidthRef.current > 0) {
       Animated.spring(slideAnim, {
         toValue: selectedIndex * itemWidthRef.current,
         useNativeDriver: true,
-        damping: 20,
-        stiffness: 200,
+        damping: 25,
+        stiffness: 400,
       }).start();
     }
   }, [selectedIndex]);
+
+  useEffect(() => {
+    // Drive pill position directly from pager scroll
+    if (scrollFraction !== undefined && itemWidthRef.current > 0) {
+      slideAnim.setValue(scrollFraction * itemWidthRef.current);
+    }
+  }, [scrollFraction]);
 
   function handleLayout(e: LayoutChangeEvent) {
     const totalWidth = e.nativeEvent.layout.width;

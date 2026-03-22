@@ -4,6 +4,7 @@ import {
   Animated, View, Text, FlatList, StyleSheet, ActivityIndicator,
   TouchableOpacity, TouchableWithoutFeedback, Image, RefreshControl, ScrollView, TextInput,
 } from 'react-native';
+import PagerView from 'react-native-pager-view';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CommonActions } from '@react-navigation/native';
 import { useAuthStore } from '../../store/authStore';
@@ -39,6 +40,8 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
   const queryClient = useQueryClient();
   const { toast, showToast, hideToast } = useToast();
   const [activeTab, setActiveTab] = useState(0);
+  const [scrollFraction, setScrollFraction] = useState<number | undefined>(undefined);
+  const isTappingRef = useRef(false);
 
   const [searchActive, setSearchActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -48,6 +51,7 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchBarHeight = useRef(new Animated.Value(0)).current;
   const searchInputRef = useRef<any>(null);
+  const pagerRef = useRef<PagerView>(null);
 
   function openSearch() {
     setSearchActive(true);
@@ -67,12 +71,7 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
     setSearchQuery('');
     setSearchResults({ dogs: [], owners: [], breeds: [], packs: [] });
     setSearched(false);
-    Animated.spring(searchBarHeight, {
-      toValue: 0,
-      useNativeDriver: false,
-      damping: 18,
-      stiffness: 160,
-    }).start();
+    searchBarHeight.setValue(0);
   }
 
   useEffect(() => {
@@ -294,8 +293,11 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
       queryClient.invalidateQueries({ queryKey: ['pack_unread_counts'] });
     });
     const parent = navigation.getParent();
-    const unsubTab = parent?.addListener('tabPress', () => {
-      if (searchActiveRef.current) closeSearch();
+    const unsubTab = parent?.addListener('tabPress', (e: any) => {
+      if (searchActiveRef.current) {
+        e.preventDefault();
+        closeSearch();
+      }
     });
     return () => { unsubFocus(); unsubTab?.(); };
   }, [navigation]);
@@ -346,7 +348,7 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
           </TouchableOpacity>
         </View>
       </Animated.View>
-      {searchActive ? (
+      {searchActive && (
         <SearchResultsList
           results={searchResults}
           searched={searched}
@@ -355,16 +357,37 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
           activeDog={activeDog}
           navigation={navigation}
         />
-      ) : (
-        <>
+      )}
+      <View style={searchActive ? { display: 'none' } : { flex: 1 }}>
           <SegmentedControl
             options={['Friends', 'Packs']}
             selectedIndex={activeTab}
-            onChange={setActiveTab}
+            scrollFraction={scrollFraction}
+            onChange={(idx) => {
+              isTappingRef.current = true;
+              setActiveTab(idx);
+              setScrollFraction(undefined);
+              pagerRef.current?.setPage(idx);
+              setTimeout(() => { isTappingRef.current = false; }, 300);
+            }}
             style={{ margin: spacing.md, marginBottom: 0 }}
           />
-          {activeTab === 0 ? (
-            friendsLoading ? (
+          <PagerView
+            ref={pagerRef}
+            style={{ flex: 1 }}
+            initialPage={0}
+            onPageSelected={(e) => {
+              const page = e.nativeEvent.position;
+              if (page !== activeTab) setActiveTab(page);
+            }}
+            onPageScroll={(e) => {
+              if (isTappingRef.current) return;
+              const { position, offset } = e.nativeEvent;
+              setScrollFraction(position + offset);
+            }}
+          >
+          <View key="friends" style={{ flex: 1 }}>
+          {friendsLoading ? (
               <View style={styles.center}><ActivityIndicator size="large" color={colors.primary} /></View>
             ) : (
               <FlatList
@@ -464,10 +487,10 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
                   </TouchableOpacity>
                 )}
               />
-            )
-          ) : (
-            <View style={{ flex: 1 }}>
-              {packs.length === 0 ? (
+            )}
+          </View>
+          <View key="packs" style={{ flex: 1 }}>
+            {packs.length === 0 ? (
                 <View style={styles.empty}>
                   <Text style={{ fontSize: 72 }}>🐾</Text>
                   <Text style={styles.emptyTitle}>No packs yet</Text>
@@ -497,10 +520,9 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
                   )}
                 />
               )}
-            </View>
-          )}
-        </>
-      )}
+          </View>
+          </PagerView>
+      </View>
       <Toast message={toast.message} type={toast.type} visible={toast.visible} onHide={hideToast} />
     </View>
   );
