@@ -5,11 +5,23 @@ import { colors, spacing, typography, borderRadius } from '../constants/theme';
 const AVATAR_SIZE = 40;
 const AVATAR_OFFSET = 20;
 
+function formatTime(isoString: string): string {
+  const date = new Date(isoString);
+  const hours = date.getHours();
+  const minutes = date.getMinutes();
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  const h = hours % 12 || 12;
+  const m = minutes.toString().padStart(2, '0');
+  return `${h}:${m} ${ampm}`;
+}
+
 type Props = {
   packName: string;
+  packPhoto: string | null;
   memberDogPhotos: string[];
   memberCount: number;
   lastMessage: string | null;
+  lastMessageTime: string | null;
   hasLiveMember: boolean;
   unreadCount: number;
   packType: 'public' | 'semi_public' | 'private';
@@ -24,14 +36,17 @@ const TYPE_LABEL: Record<Props['packType'], string> = {
 
 export default function PackCard({
   packName,
+  packPhoto,
   memberDogPhotos,
   memberCount,
   lastMessage,
+  lastMessageTime,
   hasLiveMember,
   unreadCount,
   packType,
   onPress,
 }: Props) {
+  const timeLabel = lastMessageTime ? formatTime(lastMessageTime) : null;
   const displayPhotos = memberDogPhotos.slice(0, 3);
   const stackWidth = displayPhotos.length > 0
     ? AVATAR_SIZE + (displayPhotos.length - 1) * AVATAR_OFFSET
@@ -43,51 +58,41 @@ export default function PackCard({
       activeOpacity={0.75}
       onPress={onPress}
     >
-      {/* Stacked avatars */}
-      <View style={[styles.stackWrap, { width: stackWidth }]}>
-        {displayPhotos.length === 0 ? (
-          <View style={styles.avatarPlaceholder}>
-            <Text style={{ fontSize: 22 }}>🐾</Text>
-          </View>
+      {/* Pack photo — left */}
+      <View style={styles.packPhotoWrap}>
+        {packPhoto ? (
+          <Image source={{ uri: packPhoto }} style={styles.packPhoto} />
         ) : (
-          displayPhotos.map((photo, index) => (
-            <View
-              key={index}
-              style={[
-                styles.avatarOuterWrap,
-                { left: index * AVATAR_OFFSET, zIndex: displayPhotos.length - index },
-              ]}
-            >
-              <Image source={{ uri: photo }} style={styles.avatar} />
-            </View>
-          ))
+          <View style={[styles.packPhoto, styles.packPhotoPlaceholder]}>
+            <Text style={{ fontSize: 24 }}>🐾</Text>
+          </View>
         )}
       </View>
 
-      {/* Pack info */}
+      {/* Pack info — right */}
       <View style={styles.info}>
         <View style={styles.nameRow}>
-          <Text style={styles.packName} numberOfLines={1}>{packName}</Text>
-          {unreadCount > 0 && (
-            <View style={styles.unreadBadge}>
-              <Text style={styles.unreadBadgeText}>{Math.min(unreadCount, 9)}</Text>
-            </View>
-          )}
-        </View>
-        <Text style={styles.memberCount}>{memberCount} {memberCount === 1 ? 'member' : 'members'}</Text>
-        <View style={styles.typeBadge}>
-          <Text style={styles.typeBadgeText}>{TYPE_LABEL[packType]}</Text>
+          <Text style={styles.packName} numberOfLines={1}>{packName}    <Text style={styles.typeBadgeText}>{TYPE_LABEL[packType]}</Text></Text>
         </View>
         {lastMessage ? (
           <Text style={styles.lastMessage} numberOfLines={1}>{lastMessage}</Text>
         ) : null}
+        {hasLiveMember && (
+          <View style={[styles.livePill, { alignSelf: 'flex-start' }]}>
+            <Text style={styles.livePillText}>Live</Text>
+          </View>
+        )}
       </View>
 
-      {hasLiveMember && (
-        <View style={styles.livePill}>
-          <Text style={styles.livePillText}>Live</Text>
-        </View>
-      )}
+      {/* Time + unread — top right column */}
+      <View style={styles.rightCol}>
+        {timeLabel && <Text style={styles.timeText}>{timeLabel}</Text>}
+        {unreadCount > 0 && (
+          <View style={styles.unreadBadge}>
+            <Text style={styles.unreadBadgeText}>{Math.min(unreadCount, 9)}</Text>
+          </View>
+        )}
+      </View>
     </TouchableOpacity>
   );
 }
@@ -162,20 +167,32 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   lastMessage: {
-    fontSize: 12,
+    fontSize: 15,
     color: colors.textLight,
-    marginTop: 1,
+    marginTop: 2,
   },
-  unreadBadge: {
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: colors.primary,
-    borderWidth: 2,
-    borderColor: colors.background,
+  packPhotoWrap: {
+    position: 'relative',
+    marginRight: spacing.sm,
+  },
+  packPhoto: {
+    width: 50,
+    height: 50,
+    borderRadius: 14,
+  },
+  packPhotoPlaceholder: {
+    backgroundColor: colors.surfaceHigh,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 3,
+  },
+  unreadBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
   },
   unreadBadgeText: {
     fontSize: 10,
@@ -204,8 +221,19 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceHigh,
     marginTop: 2,
   },
+  rightCol: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: spacing.sm,
+    gap: 4,
+  },
+  timeText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
   typeBadgeText: {
     fontSize: 10,
+    lineHeight: 17,
     color: colors.textSecondary,
     fontWeight: '600',
   },

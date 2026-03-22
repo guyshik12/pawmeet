@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Keyboard } from 'react-native';
 import {
   Animated, View, Text, FlatList, StyleSheet, ActivityIndicator,
   TouchableOpacity, TouchableWithoutFeedback, Image, RefreshControl, ScrollView, TextInput,
@@ -46,6 +47,7 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
   const [searched, setSearched] = useState(false);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchBarHeight = useRef(new Animated.Value(0)).current;
+  const searchInputRef = useRef<any>(null);
 
   function openSearch() {
     setSearchActive(true);
@@ -55,10 +57,12 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
       damping: 18,
       stiffness: 160,
     }).start();
-    navigation.setOptions({ headerRight: undefined });
+    // Focus immediately so keyboard shows right away
+    setTimeout(() => searchInputRef.current?.focus(), 50);
   }
 
   function closeSearch() {
+    Keyboard.dismiss();
     setSearchActive(false);
     setSearchQuery('');
     setSearchResults({ dogs: [], owners: [], breeds: [], packs: [] });
@@ -69,15 +73,6 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
       damping: 18,
       stiffness: 160,
     }).start();
-    if (activeTab === 1) {
-      navigation.setOptions({
-        headerRight: () => (
-          <TouchableOpacity onPress={() => navigation.navigate('CreatePack')} style={{ marginRight: spacing.sm }}>
-            <Text style={{ fontSize: 24, color: colors.primary }}>+</Text>
-          </TouchableOpacity>
-        ),
-      });
-    }
   }
 
   useEffect(() => {
@@ -91,7 +86,7 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
     setSearchLoading(true);
     searchDebounceRef.current = setTimeout(async () => {
       try {
-        const r = await searchAll(searchQuery, userId);
+        const r = await searchAll(searchQuery, userId, activeDog?.id);
         setSearchResults(r);
         setSearched(true);
       } catch {
@@ -107,18 +102,18 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
   React.useLayoutEffect(() => {
     navigation.setOptions({
       headerBackTitle: activeTab === 1 ? 'Packs' : 'Friends',
-      headerLeft: activeTab === 1 ? () => (
+      headerLeft: !searchActive && activeTab === 1 ? () => (
         <TouchableOpacity onPress={() => navigation.navigate('CreatePack')} style={{ marginLeft: spacing.sm }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Text style={{ fontSize: 24, color: colors.primary }}>+</Text>
         </TouchableOpacity>
       ) : undefined,
-      headerRight: () => (
+      headerRight: !searchActive ? () => (
         <TouchableOpacity onPress={openSearch} style={{ marginRight: spacing.sm }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Text style={{ fontSize: 20 }}>🔍</Text>
         </TouchableOpacity>
-      ),
+      ) : undefined,
     });
-  }, [activeTab]);
+  }, [activeTab, searchActive]);
 
   // Keep a stable ref to navigation so the registered handler never captures a stale value.
   const navigationRef = React.useRef(navigation);
@@ -289,12 +284,20 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
   });
 
   // Refresh pack data when screen comes into focus (e.g. navigating back from chat)
+  const searchActiveRef = useRef(searchActive);
+  searchActiveRef.current = searchActive;
+
   useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
+    const unsubFocus = navigation.addListener('focus', () => {
+      if (searchActiveRef.current) closeSearch();
       queryClient.invalidateQueries({ queryKey: ['pack_last_messages'] });
       queryClient.invalidateQueries({ queryKey: ['pack_unread_counts'] });
     });
-    return unsubscribe;
+    const parent = navigation.getParent();
+    const unsubTab = parent?.addListener('tabPress', () => {
+      if (searchActiveRef.current) closeSearch();
+    });
+    return () => { unsubFocus(); unsubTab?.(); };
   }, [navigation]);
 
   // Realtime subscription
@@ -328,6 +331,7 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
         <View style={styles.searchBar}>
           <Text style={styles.searchIcon}>🔍</Text>
           <TextInput
+            ref={searchInputRef}
             style={styles.searchInput}
             placeholder="Search dogs, owners, breeds, packs..."
             placeholderTextColor={colors.textSecondary}
@@ -379,16 +383,27 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
                   <TouchableOpacity
                     style={styles.card}
                     activeOpacity={0.75}
-                    onPress={() => navigation.navigate('FriendProfile', {
-                      dog: item.friendDog,
-                      ownerProfile: item.friendOwner,
-                      ownerId: item.friendDog.owner_id,
+                    onPress={() => navigation.navigate('Chat', {
                       friendshipId: item.id,
-                      isUserA: item.user_a === userId,
                       friendName: item.friendOwner.name,
+                      friendDogName: item.friendDog?.name ?? item.friendOwner.name,
+                      isUserA: item.user_a === userId,
+                      friendDog: item.friendDog,
+                      friendOwner: item.friendOwner,
                     })}
                   >
-                    <View style={styles.avatarWrap}>
+                    <TouchableOpacity
+                      style={styles.avatarWrap}
+                      activeOpacity={0.7}
+                      onPress={() => navigation.navigate('FriendProfile', {
+                        dog: item.friendDog,
+                        ownerProfile: item.friendOwner,
+                        ownerId: item.friendDog.owner_id,
+                        friendshipId: item.id,
+                        isUserA: item.user_a === userId,
+                        friendName: item.friendOwner.name,
+                      })}
+                    >
                       {item.friendDog?.photo_url ? (
                         <Image
                           source={{ uri: item.friendDog.photo_url }}
@@ -406,7 +421,7 @@ export default function FriendsScreen({ navigation }: { navigation: any }) {
                           </Text>
                         </View>
                       )}
-                    </View>
+                    </TouchableOpacity>
                     <View style={styles.info}>
                       <View style={styles.nameRow}>
                         <Text style={styles.name}>{item.friendDog?.name ?? '?'}</Text>
@@ -653,7 +668,9 @@ function SearchResultsList({
                   {pack.packType === 'public' ? 'Public' : 'Semi-public'}
                 </Text>
               </View>
-              {pack.packType === 'public' ? (
+              {pack.isMember ? (
+                <Text style={searchStyles.statusLabel}>Member ✓</Text>
+              ) : pack.packType === 'public' ? (
                 <TouchableOpacity
                   style={searchStyles.actionBtn}
                   onPress={() => handleJoin(pack)}
@@ -693,7 +710,11 @@ function SearchResultsList({
                 <Text style={searchStyles.resultName}>{dog.dogName}</Text>
                 {dog.dogBreed ? <Text style={searchStyles.resultMeta}>{dog.dogBreed}</Text> : null}
               </View>
-              <Text style={searchStyles.resultMeta}>{dog.ownerName}</Text>
+              {dog.isFriend ? (
+                <Text style={searchStyles.statusLabel}>Friend ✓</Text>
+              ) : (
+                <Text style={searchStyles.resultMeta}>{dog.ownerName}</Text>
+              )}
             </View>
           ))}
         </View>
@@ -826,6 +847,7 @@ const searchStyles = StyleSheet.create({
   actionBtnText: { fontSize: 12, color: '#fff', fontWeight: '700' },
   actionBtnOutline: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.primary },
   actionBtnOutlineText: { color: colors.primary },
+  statusLabel: { fontSize: 12, color: colors.textSecondary, fontStyle: 'italic' },
   sheet: {
     position: 'absolute',
     bottom: 0, left: 0, right: 0,

@@ -1,15 +1,15 @@
 export const colors = {
-  primary: '#2F80ED',
-  primaryLight: '#56CCF2',
-  primaryGradient: ['#2F80ED', '#56CCF2'] as const,
-  background: '#0A0A0A',
-  surface: '#111111',
-  surfaceHigh: '#1C1C1C',
-  surfaceBorder: '#222222',
-  text: '#FFFFFF',
-  textSecondary: '#888888',
-  textLight: '#444444',
-  border: '#222222',
+  primary: '#E8943A',
+  primaryLight: '#F5B96A',
+  primaryGradient: ['#E8943A', '#F5B96A'] as const,
+  background: '#0C0B09',
+  surface: '#151210',
+  surfaceHigh: '#1E1B13',
+  surfaceBorder: '#29241A',
+  text: '#F0EBE3',          // warm soft white — easier on eyes than pure white
+  textSecondary: '#908B84', // warm muted gray
+  textLight: '#5E5A55',     // raised from #444 — was near-invisible on dark bg
+  border: '#29241A',
   error: '#FF453A',
   success: '#34C759',
   warning: '#FFD60A',
@@ -44,22 +44,22 @@ export const typography = {
 
 export const shadow = {
   sm: {
-    shadowColor: '#2F80ED',
-    shadowOpacity: 0.2,
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
   },
   md: {
-    shadowColor: '#2F80ED',
-    shadowOpacity: 0.3,
+    shadowColor: '#000',
+    shadowOpacity: 0.45,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
   },
   lg: {
-    shadowColor: '#2F80ED',
-    shadowOpacity: 0.4,
+    shadowColor: '#000',
+    shadowOpacity: 0.55,
     shadowRadius: 28,
     shadowOffset: { width: 0, height: 8 },
     elevation: 10,

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   Alert, ScrollView, Image, ActivityIndicator,
@@ -17,8 +17,9 @@ import { updateStatus } from '../../services/profileService';
 import { Dog } from '../../types/database.types';
 import AddEditDogModal from '../dogs/AddEditDogModal';
 import GlassCard from '../../components/ui/GlassCard';
-import { updateProfile } from '../../services/profileService';
+import { updateProfile, getProfile } from '../../services/profileService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
 
 const SETTINGS_KEYS = {
   notifFriendRequests: 'settings_notif_friend_requests',
@@ -171,6 +172,13 @@ export default function ProfileScreen({ navigation }: Props) {
 
   const { setProfile } = useAuthStore();
 
+  // If profile failed to load on app start, retry silently when user visits this screen.
+  useFocusEffect(useCallback(() => {
+    if (!profile && user) {
+      getProfile(user.id).then(setProfile).catch(() => {});
+    }
+  }, [profile, user?.id]));
+
   const openOwnerModal = () => {
     setOwnerName(profile?.name ?? '');
     setOwnerBio(profile?.bio ?? '');
@@ -231,11 +239,12 @@ export default function ProfileScreen({ navigation }: Props) {
   };
 
   const handleStatusChange = async (status: UserStatus) => {
+    const previous = currentStatus;
     setCurrentStatus(status);
     try {
       await updateStatus(user!.id, status);
     } catch (_) {
-      // silent — optimistic update already done
+      setCurrentStatus(previous); // rollback optimistic update on failure
     }
   };
 
@@ -311,11 +320,11 @@ export default function ProfileScreen({ navigation }: Props) {
   const handleDeleteAccount = () => {
     Alert.alert(
       'Delete Account',
-      'This will permanently delete your account and all your data. This cannot be undone.',
+      'To permanently delete your account and all your data, please contact support@dogpark.app.\n\nYou will now be signed out.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Delete',
+          text: 'Sign Out',
           style: 'destructive',
           onPress: () => supabase.auth.signOut(),
         },
@@ -436,69 +445,77 @@ export default function ProfileScreen({ navigation }: Props) {
 
       {dog.age_years ? <Text style={styles.dogAge}>{dog.age_years} years old</Text> : null}
 
-      {/* Compatibility row */}
-      {(dog.good_with_dogs || dog.good_with_kids) ? (
-        <View style={styles.compatRow}>
-          {dog.good_with_dogs ? (
-            <View style={styles.compatItem}>
-              <Text style={styles.compatIcon}>🐾</Text>
-              <Text style={styles.compatLabel}>Dogs: {dog.good_with_dogs}</Text>
+      {/* MY DOG section card */}
+      {(dog.good_with_dogs || dog.good_with_kids || dog.vaccinated !== null || dog.neutered !== null ||
+        (dog.temperament?.length ?? 0) > 0 || (dog.activities?.length ?? 0) > 0 || dog.bio ||
+        ((dog.prompts as any[] | null)?.some((p) => p.question && p.answer))) ? (
+        <View style={styles.dogCard}>
+          <Text style={styles.dogCardHeader}>About {dog.name}</Text>
+
+          {(dog.good_with_dogs || dog.good_with_kids) ? (
+            <View style={styles.compatRow}>
+              {dog.good_with_dogs ? (
+                <View style={styles.compatItem}>
+                  <Text style={styles.compatIcon}>🐾</Text>
+                  <Text style={styles.compatLabel}>
+                    With dogs — <Text style={{ color: dog.good_with_dogs === 'Yes' ? colors.success : dog.good_with_dogs === 'No' ? colors.error : colors.warning }}>{dog.good_with_dogs}</Text>
+                  </Text>
+                </View>
+              ) : null}
+              {dog.good_with_kids ? (
+                <View style={styles.compatItem}>
+                  <Text style={styles.compatIcon}>👶</Text>
+                  <Text style={styles.compatLabel}>
+                    With kids — <Text style={{ color: dog.good_with_kids === 'Yes' ? colors.success : dog.good_with_kids === 'No' ? colors.error : colors.warning }}>{dog.good_with_kids}</Text>
+                  </Text>
+                </View>
+              ) : null}
             </View>
           ) : null}
-          {dog.good_with_kids ? (
-            <View style={styles.compatItem}>
-              <Text style={styles.compatIcon}>👶</Text>
-              <Text style={styles.compatLabel}>Kids: {dog.good_with_kids}</Text>
+
+          {(dog.vaccinated !== null || dog.neutered !== null) ? (
+            <View style={styles.healthRow}>
+              <BoolBadge label="Vaccinated" value={dog.vaccinated} />
+              <BoolBadge label="Neutered" value={dog.neutered} />
             </View>
           ) : null}
-        </View>
-      ) : null}
 
-      {/* Health badges */}
-      {(dog.vaccinated !== null || dog.neutered !== null) ? (
-        <View style={styles.healthRow}>
-          <BoolBadge label="Vaccinated" value={dog.vaccinated} />
-          <BoolBadge label="Neutered" value={dog.neutered} />
-        </View>
-      ) : null}
-
-      {/* Temperament chips */}
-      {dog.temperament && dog.temperament.length > 0 ? (
-        <View style={styles.chipsSection}>
-          <Text style={styles.chipsLabel}>Temperament</Text>
-          <View style={styles.chipsWrap}>
-            {dog.temperament.map((t) => (
-              <View key={t} style={styles.readChip}>
-                <Text style={styles.readChipText}>{t}</Text>
+          {dog.temperament && dog.temperament.length > 0 ? (
+            <View style={styles.chipsSection}>
+              <Text style={styles.chipsLabel}>Temperament</Text>
+              <View style={styles.chipsWrap}>
+                {dog.temperament.map((t) => (
+                  <View key={t} style={styles.readChip}>
+                    <Text style={styles.readChipText}>{t}</Text>
+                  </View>
+                ))}
               </View>
-            ))}
-          </View>
-        </View>
-      ) : null}
+            </View>
+          ) : null}
 
-      {/* Activities chips */}
-      {dog.activities && dog.activities.length > 0 ? (
-        <View style={styles.chipsSection}>
-          <Text style={styles.chipsLabel}>Favorite Activities</Text>
-          <View style={styles.chipsWrap}>
-            {dog.activities.map((a) => (
-              <View key={a} style={styles.readChip}>
-                <Text style={styles.readChipText}>{a}</Text>
+          {dog.activities && dog.activities.length > 0 ? (
+            <View style={styles.chipsSection}>
+              <Text style={styles.chipsLabel}>Favorite Activities</Text>
+              <View style={styles.chipsWrap}>
+                {dog.activities.map((a) => (
+                  <View key={a} style={styles.readChip}>
+                    <Text style={styles.readChipText}>{a}</Text>
+                  </View>
+                ))}
               </View>
-            ))}
-          </View>
+            </View>
+          ) : null}
+
+          {dog.bio ? <Text style={styles.dogBio}>{dog.bio}</Text> : null}
+
+          {(dog.prompts as any[] | null)?.filter((p) => p.question && p.answer).map((p, i) => (
+            <View key={i} style={styles.speechBubble}>
+              <Text style={styles.speechQuestion}>{p.question}</Text>
+              <Text style={styles.speechAnswer}>{p.answer}</Text>
+            </View>
+          ))}
         </View>
       ) : null}
-
-      {dog.bio ? <Text style={styles.dogBio}>{dog.bio}</Text> : null}
-
-      {/* Icebreakers */}
-      {(dog.prompts as any[] | null)?.filter((p) => p.question && p.answer).map((p, i) => (
-        <View key={i} style={styles.speechBubble}>
-          <Text style={styles.speechQuestion}>{p.question}</Text>
-          <Text style={styles.speechAnswer}>{p.answer}</Text>
-        </View>
-      ))}
 
       {/* Edit Button */}
       <TouchableOpacity
@@ -541,11 +558,16 @@ export default function ProfileScreen({ navigation }: Props) {
       {/* Owner Profile Card */}
       <GlassCard style={styles.accountSection}>
         <View style={styles.accountHeaderRow}>
-          <Text style={styles.accountLabel}>YOUR PROFILE</Text>
+          <Text style={styles.accountLabel}>Meet the Human</Text>
           <TouchableOpacity onPress={openOwnerModal}>
             <Text style={styles.accountEditLink}>Edit</Text>
           </TouchableOpacity>
         </View>
+        {!profile && (
+          <View style={styles.profileLoadError}>
+            <Text style={styles.profileLoadErrorText}>Couldn't load profile — visit this tab again to retry.</Text>
+          </View>
+        )}
         <Text style={styles.accountName}>{profile?.name ?? 'Dog Owner'}</Text>
         <Text style={styles.accountEmail}>{user?.email}</Text>
 
@@ -732,7 +754,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.full, borderWidth: 1.5, borderColor: colors.border,
     backgroundColor: colors.surface,
   },
-  switcherPillActive: { borderColor: colors.primary, backgroundColor: 'rgba(47,128,237,0.15)' },
+  switcherPillActive: { borderColor: colors.primary, backgroundColor: `${colors.primary}18` },
   switcherText: { ...typography.bodySmall, color: colors.textSecondary, fontWeight: '600' },
   switcherTextActive: { color: colors.primary, fontWeight: '700' },
 
@@ -771,30 +793,44 @@ const styles = StyleSheet.create({
   extraPhoto: { width: 90, height: 90, borderRadius: borderRadius.md },
   dogAge: { ...typography.bodySmall, color: colors.textSecondary, marginTop: spacing.xs },
 
-  compatRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
+  dogCard: {
+    width: '92%', marginTop: spacing.lg,
+    backgroundColor: colors.surfaceHigh,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1, borderColor: colors.border,
+    padding: spacing.md,
+    alignItems: 'flex-start',
+  },
+  dogCardHeader: {
+    ...typography.caption, color: colors.textLight,
+    fontWeight: '800', letterSpacing: 1.2, textTransform: 'uppercase',
+    marginBottom: spacing.sm,
+  },
+
+  compatRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xs },
   compatItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   compatIcon: { fontSize: 14 },
   compatLabel: { ...typography.bodySmall, color: colors.textSecondary, fontWeight: '600' },
 
   healthRow: { flexDirection: 'row', marginTop: spacing.sm },
 
-  chipsSection: { width: '90%', marginTop: spacing.md, alignItems: 'flex-start' },
+  chipsSection: { width: '100%', marginTop: spacing.md, alignItems: 'flex-start' },
   chipsLabel: { ...typography.caption, color: colors.textLight, fontWeight: '700', letterSpacing: 0.8, marginBottom: spacing.xs, textTransform: 'uppercase' },
   chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   readChip: {
-    paddingVertical: 5, paddingHorizontal: spacing.sm,
-    borderRadius: borderRadius.full, borderWidth: 1, borderColor: colors.border,
-    backgroundColor: colors.surface,
+    paddingVertical: 5, paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.full, borderWidth: 1, borderColor: `${colors.primary}35`,
+    backgroundColor: `${colors.primary}10`,
   },
-  readChipText: { ...typography.caption, color: colors.textSecondary, fontWeight: '600' },
+  readChipText: { ...typography.caption, color: colors.primary, fontWeight: '600' },
 
   dogBio: {
-    ...typography.body, color: colors.textSecondary, textAlign: 'center',
-    marginTop: spacing.md, paddingHorizontal: spacing.xl, lineHeight: 22,
+    ...typography.body, color: colors.textSecondary,
+    marginTop: spacing.md, lineHeight: 22,
   },
 
   speechBubble: {
-    width: '90%', marginTop: spacing.md,
+    width: '100%', marginTop: spacing.md,
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
     borderWidth: 1.5, borderColor: colors.border,
@@ -810,10 +846,10 @@ const styles = StyleSheet.create({
 
   editBtn: {
     marginTop: spacing.lg,
-    borderWidth: 1.5, borderColor: 'rgba(47,128,237,0.6)',
+    borderWidth: 1.5, borderColor: `${colors.primary}70`,
     borderRadius: borderRadius.full, paddingVertical: spacing.sm, paddingHorizontal: spacing.xl,
     overflow: 'hidden',
-    backgroundColor: 'rgba(47,128,237,0.08)',
+    backgroundColor: `${colors.primary}10`,
   },
   editBtnText: { ...typography.body, color: colors.primary, fontWeight: '700' },
 
@@ -841,10 +877,18 @@ const styles = StyleSheet.create({
   },
   accountHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
   accountLabel: {
-    ...typography.caption, color: colors.textLight, fontWeight: '800',
-    letterSpacing: 1.2, textTransform: 'uppercase',
+    ...typography.h3, color: colors.text, fontWeight: '700',
   },
   accountEditLink: { ...typography.bodySmall, color: colors.primary, fontWeight: '700' },
+  profileLoadError: {
+    backgroundColor: `${colors.error}18`,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: `${colors.error}40`,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  profileLoadErrorText: { ...typography.caption, color: colors.error, fontWeight: '600' },
   accountName: { ...typography.body, color: colors.text, fontWeight: '700' },
   accountEmail: { ...typography.bodySmall, color: colors.textSecondary, marginBottom: spacing.sm },
 

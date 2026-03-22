@@ -262,6 +262,7 @@ export interface Database {
           id: string;
           name: string;
           type: 'public' | 'semi_public' | 'private';
+          photo_url: string | null;
           created_by: string;
           created_at: string;
         };
@@ -269,6 +270,7 @@ export interface Database {
           id?: string;
           name: string;
           type?: 'public' | 'semi_public' | 'private';
+          photo_url?: string | null;
           created_by: string;
           created_at?: string;
         };
@@ -276,6 +278,7 @@ export interface Database {
           id?: string;
           name?: string;
           type?: 'public' | 'semi_public' | 'private';
+          photo_url?: string | null;
           created_by?: string;
           created_at?: string;
         };
@@ -286,6 +289,7 @@ export interface Database {
           pack_id: string;
           user_id: string;
           dog_id: string | null;
+          role: 'leader' | 'member';
           joined_at: string;
         };
         Insert: {
@@ -293,6 +297,7 @@ export interface Database {
           pack_id: string;
           user_id: string;
           dog_id?: string | null;
+          role?: 'leader' | 'member';
           joined_at?: string;
         };
         Update: {
@@ -300,6 +305,7 @@ export interface Database {
           pack_id?: string;
           user_id?: string;
           dog_id?: string | null;
+          role?: 'leader' | 'member';
           joined_at?: string;
         };
       };

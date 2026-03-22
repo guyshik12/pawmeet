@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, FlatList, TextInput, TouchableOpacity,
+  View, Text, FlatList, TextInput, TouchableOpacity, Image,
   StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
 } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -21,7 +21,7 @@ type Props = {
 };
 
 export default function ChatScreen({ route, navigation }: Props) {
-  const { friendshipId, friendName, friendDogName, isUserA } = route.params;
+  const { friendshipId, friendName, friendDogName, isUserA, friendDog, friendOwner } = route.params as any;
   const { user } = useAuthStore();
   const { currentDog } = useDogStore();
   const activeDog = currentDog();
@@ -46,15 +46,36 @@ export default function ChatScreen({ route, navigation }: Props) {
 
   useEffect(() => {
     navigation.setOptions({
-      title: friendDogName,
       headerLeft: () => (
-        <TouchableOpacity onPress={() => navigation.goBack()} style={{ flexDirection: 'row', alignItems: 'center', marginLeft: -4 }}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ flexDirection: 'row', alignItems: 'center', marginLeft: -4, gap: 6 }}>
           <Text style={{ fontSize: 40, color: colors.primary, lineHeight: 40 }}>‹</Text>
           {unreadCount > 0 ? (
-            <View style={{ backgroundColor: colors.primary, borderRadius: 9, paddingHorizontal: 5, paddingVertical: 1, marginLeft: 4 }}>
+            <View style={{ backgroundColor: colors.primary, borderRadius: 9, paddingHorizontal: 5, paddingVertical: 1 }}>
               <Text style={{ fontSize: 12, color: '#fff', fontWeight: '700' }}>{unreadCount}</Text>
             </View>
           ) : null}
+          {friendDog?.photo_url ? (
+            <Image source={{ uri: friendDog.photo_url }} style={{ width: 36, height: 36, borderRadius: 10 }} />
+          ) : (
+            <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colors.surfaceHigh, justifyContent: 'center', alignItems: 'center' }}>
+              <Text style={{ fontSize: 18 }}>🐶</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      ),
+      headerTitle: () => (
+        <TouchableOpacity
+          onPress={friendDog ? () => navigation.navigate('FriendProfile', {
+            dog: friendDog,
+            ownerProfile: friendOwner,
+            ownerId: friendDog.owner_id,
+            friendshipId,
+            isUserA,
+            friendName,
+          }) : undefined}
+          activeOpacity={friendDog ? 0.7 : 1}
+        >
+          <Text style={{ color: colors.text, fontSize: 20, fontWeight: '700' }}>{friendDogName}</Text>
         </TouchableOpacity>
       ),
     });

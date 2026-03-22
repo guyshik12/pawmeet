@@ -24,8 +24,10 @@ export default function InAppMessageBanner({ data, onDismiss, onPress }: Props) 
   const insets = useSafeAreaInsets();
   const translateY = useSharedValue(-120);
   const opacity = useSharedValue(0);
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hide = () => {
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
     translateY.value = withTiming(-120, { duration: 300 });
     opacity.value = withTiming(0, { duration: 300 }, (done) => {
       if (done) runOnJS(onDismiss)();
@@ -37,8 +39,8 @@ export default function InAppMessageBanner({ data, onDismiss, onPress }: Props) 
     translateY.value = withSpring(0, { damping: 18, stiffness: 160 });
     opacity.value = withTiming(1, { duration: 200 });
 
-    const timer = setTimeout(hide, 4000);
-    return () => clearTimeout(timer);
+    timerRef.current = setTimeout(hide, 4000);
+    return () => { if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; } };
   }, [data?.friendshipId, data?.message]);
 
   const animStyle = useAnimatedStyle(() => ({

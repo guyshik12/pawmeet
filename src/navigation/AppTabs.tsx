@@ -61,7 +61,7 @@ export type AppTabsParamList = {
 export type FriendsStackParamList = {
   [Routes.Friends]: undefined;
   [Routes.FriendProfile]: FriendProfileParams;
-  [Routes.Chat]: { friendshipId: string; friendName: string; friendDogName: string; isUserA: boolean };
+  [Routes.Chat]: { friendshipId: string; friendName: string; friendDogName: string; isUserA: boolean; friendDog?: any; friendOwner?: any };
   [Routes.PackChat]: { packId: string; packName: string; memberCount: number };
   [Routes.CreatePack]: undefined;
   [Routes.PackRequests]: { packId: string; packName: string };

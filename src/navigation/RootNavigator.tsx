@@ -30,8 +30,8 @@ export default function RootNavigator() {
       setLoading(false);
     };
 
-    supabase.auth.getSession().then(({ data: { session: s } }) => loadSession(s));
-
+    // onAuthStateChange fires immediately with the current session (INITIAL_SESSION event),
+    // so getSession() is not needed and would cause loadSession to run twice.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       loadSession(s);
     });

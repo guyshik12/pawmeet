@@ -1,13 +1,13 @@
 import React from 'react';
 import {
   View, Text, StyleSheet, Dimensions, ScrollView,
-  Image, TouchableOpacity,
+  Image, TouchableOpacity, Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
 import { sendMessage } from '../../services/chatService';
-import { FriendDogProfile, FriendOwnerProfile } from '../../services/friendService';
+import { FriendDogProfile, FriendOwnerProfile, unfriendship } from '../../services/friendService';
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 import { useToast } from '../../hooks/useToast';
 import Toast from '../../components/ui/Toast';
@@ -221,6 +221,17 @@ export default function FriendProfileScreen({ route, navigation }: any) {
   const { dog, ownerProfile, friendshipId, isUserA, friendName } = route.params as FriendProfileParams;
   const { user } = useAuthStore();
   const { toast, showToast, hideToast } = useToast();
+  const queryClient = useQueryClient();
+
+  React.useEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => (
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginLeft: -4 }}>
+          <Text style={{ fontSize: 40, color: colors.primary }}>‹</Text>
+        </TouchableOpacity>
+      ),
+    });
+  }, []);
 
   const woofMutation = useMutation({
     mutationFn: () => sendMessage(friendshipId, user!.id, '🐾 Quick Woof! Want to meet up?'),
@@ -228,9 +239,31 @@ export default function FriendProfileScreen({ route, navigation }: any) {
     onError: () => showToast('Could not send woof.', 'error'),
   });
 
+  const unfriendMutation = useMutation({
+    mutationFn: () => unfriendship(friendshipId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['friends'] });
+      queryClient.invalidateQueries({ queryKey: ['badge_count'] });
+      queryClient.invalidateQueries({ queryKey: ['my_requests'] });
+      navigation.navigate('Friends');
+    },
+    onError: (e: any) => showToast(e?.message ?? 'Could not end pawship. Try again.', 'error'),
+  });
+
+  const confirmUnfriend = () => {
+    Alert.alert(
+      'End Pawship?',
+      `${dog.name} will be removed from your park pals. You can always say hi again in Discover.`,
+      [
+        { text: 'Never mind', style: 'cancel' },
+        { text: 'End Pawship', style: 'destructive', onPress: () => unfriendMutation.mutate() },
+      ]
+    );
+  };
+
   return (
     <View style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false} bounces={false} contentContainerStyle={{ paddingBottom: 96 }}>
+      <ScrollView showsVerticalScrollIndicator={false} bounces={false} contentContainerStyle={{ paddingBottom: 120 }}>
         {/* Hero */}
         <View style={{ height: HERO_HEIGHT }}>
           {dog.photo_url ? (
@@ -274,6 +307,13 @@ export default function FriendProfileScreen({ route, navigation }: any) {
 
         {/* Profile body */}
         <ProfileBody dog={dog} owner={ownerProfile} />
+
+        {/* End Pawship */}
+        <View style={styles.unfriendContainer}>
+          <TouchableOpacity style={styles.unfriendBtn} onPress={confirmUnfriend}>
+            <Text style={styles.unfriendBtnText}>End Pawship</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
 
       {/* Action bar */}
@@ -291,7 +331,7 @@ export default function FriendProfileScreen({ route, navigation }: any) {
             isUserA,
           })}
         >
-          <Text style={styles.chatBtnText}>💬 Chat with {dog.name}</Text>
+          <Text style={styles.chatBtnText}>💬 Chat</Text>
         </TouchableOpacity>
       </View>
 
@@ -386,19 +426,39 @@ const styles = StyleSheet.create({
   actionBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     flexDirection: 'row', gap: spacing.sm,
-    padding: spacing.md, paddingBottom: spacing.lg,
+    paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xl,
     backgroundColor: colors.surface,
     borderTopWidth: 1, borderTopColor: colors.border,
   },
   woofBtn: {
-    width: 56, height: 56, borderRadius: borderRadius.md,
-    backgroundColor: colors.surfaceHigh, justifyContent: 'center', alignItems: 'center',
+    width: 56, height: 52, borderRadius: borderRadius.lg,
+    backgroundColor: colors.surfaceHigh,
+    borderWidth: 1, borderColor: colors.border,
+    justifyContent: 'center', alignItems: 'center', gap: 2,
   },
-  woofBtnText: { fontSize: 20 },
-  woofBtnLabel: { ...typography.caption, color: colors.textSecondary, fontSize: 10 },
+  woofBtnText: { fontSize: 18 },
+  woofBtnLabel: { fontSize: 9, color: colors.textSecondary, fontWeight: '600', letterSpacing: 0.3 },
   chatBtn: {
-    flex: 1, height: 56, borderRadius: borderRadius.md,
+    flex: 1, height: 52, borderRadius: borderRadius.lg,
     backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center',
   },
   chatBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  unfriendContainer: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+    alignItems: 'center',
+  },
+  unfriendBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: spacing.xl,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    borderColor: colors.error,
+  },
+  unfriendBtnText: {
+    fontSize: 14,
+    color: colors.error,
+    fontWeight: '600',
+  },
 });

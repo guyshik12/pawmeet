@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MapView, { Marker } from 'react-native-maps';
+import Svg, { Path } from 'react-native-svg';
 import * as ExpoLocation from 'expo-location';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { colors, spacing, borderRadius, typography } from '../../constants/theme';
@@ -50,6 +51,14 @@ const DOG_PARKS_URL =
   '?where=1%3D1&outFields=shem_gina,Full_Address,shaot&f=json&outSR=4326';
 
 type DogPark = { id: string; name: string; address: string; lat: number; lng: number };
+
+function DogMarkerPhoto({ uri, style, fallbackStyle, fallbackSize = 18 }: {
+  uri: string; style: any; fallbackStyle: any; fallbackSize?: number;
+}) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <View style={fallbackStyle}><Text style={{ fontSize: fallbackSize }}>🐶</Text></View>;
+  return <Image source={{ uri }} style={style} onError={() => setFailed(true)} />;
+}
 
 // ─── Profile bottom sheet (tap on a dog marker) ─────────────────────────────
 type TripFriendship = { id: string; friendName: string; friendDogName: string; isUserA: boolean };
@@ -141,7 +150,7 @@ function TripDogSheet({
                     <ActivityIndicator color="#fff" />
                   ) : (
                     <Text style={sheet.connectText}>
-                      {connected ? 'Woof Sent! 🐾' : 'Connect 🐾'}
+                      {connected ? 'Woof Sent! 🐾' : 'Say Hi 🐾'}
                     </Text>
                   )}
                 </TouchableOpacity>
@@ -188,7 +197,7 @@ function IncomingLikeModal({
               ) : null}
             </View>
 
-            <Text style={incoming.headline}>Someone wants to connect!</Text>
+            <Text style={incoming.headline}>Wants to be park pals 🐾</Text>
             <Text style={incoming.dogName}>{like.dog_name}</Text>
             <Text style={incoming.ownerLine}>with {like.owner_name}</Text>
 
@@ -243,6 +252,8 @@ export default function WalksScreen() {
   const [tripDogs, setTripDogs] = useState<TripDog[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [permissionDenied, setPermissionDenied] = useState(false);
+  const [dogParksError, setDogParksError] = useState(false);
 
   // Profile sheet (tap a marker)
   const [selectedDog, setSelectedDog] = useState<TripDog | null>(null);
@@ -291,8 +302,44 @@ export default function WalksScreen() {
           }));
         setDogParks(parks);
       })
-      .catch(() => {});
+      .catch(() => { setDogParksError(true); });
   }, []);
+
+  // Tracks current map center so the travel animation knows where to start from
+  const mapRegionRef = useRef<{ latitude: number; longitude: number } | null>(null);
+
+  const handleMyLocation = () => {
+    if (!myLocation || !mapRef.current) return;
+    const dest = { latitude: myLocation.lat, longitude: myLocation.lng };
+    const cur = mapRegionRef.current;
+
+    if (cur) {
+      const midLat = (cur.latitude + dest.latitude) / 2;
+      const midLng = (cur.longitude + dest.longitude) / 2;
+      const span = Math.max(
+        Math.abs(cur.latitude - dest.latitude) * 2.8,
+        Math.abs(cur.longitude - dest.longitude) * 2.8,
+        0.06, // minimum pull-back so there's always a visible "swoop"
+      );
+      // Step 1 — zoom out to show the journey
+      mapRef.current.animateToRegion(
+        { latitude: midLat, longitude: midLng, latitudeDelta: span, longitudeDelta: span },
+        650,
+      );
+      // Step 2 — descend into destination
+      setTimeout(() => {
+        mapRef.current?.animateToRegion(
+          { ...dest, latitudeDelta: 0.008, longitudeDelta: 0.008 },
+          700,
+        );
+      }, 700);
+    } else {
+      mapRef.current.animateToRegion(
+        { ...dest, latitudeDelta: 0.008, longitudeDelta: 0.008 },
+        900,
+      );
+    }
+  };
 
   const watchRef = useRef<ExpoLocation.LocationSubscription | null>(null);
   const mapRef = useRef<MapView>(null);
@@ -313,11 +360,13 @@ export default function WalksScreen() {
     if (!user || !dog) return;
     setLoading(true);
     setError(null);
+    setPermissionDenied(false);
 
     try {
       const hasPermission = await requestLocationPermission();
       if (!hasPermission) {
-        setError('Location permission is required to start a trip.');
+        setPermissionDenied(true);
+        setError('Location permission is required. Please enable it in Settings.');
         return;
       }
 
@@ -501,13 +550,13 @@ export default function WalksScreen() {
     setConnected(false);
     setConnecting(false);
     setSelectedFriendship(null);
-    setSelectedDog(td);
-    if (!dog) return;
-    const { data } = await supabase
-      .from('friendships')
-      .select('id, dog_a, dog_b')
-      .or(`and(dog_a.eq.${dog.id},dog_b.eq.${td.dog_id}),and(dog_a.eq.${td.dog_id},dog_b.eq.${dog.id})`)
-      .maybeSingle();
+    if (!dog) { setSelectedDog(td); return; }
+    // Query friendship before opening the sheet so there's no "Say Hi → Chat" flash.
+    const { data: f1 } = await supabase.from('friendships').select('id, dog_a, dog_b')
+      .eq('dog_a', dog.id).eq('dog_b', td.dog_id).maybeSingle();
+    const { data: f2 } = !f1 ? await supabase.from('friendships').select('id, dog_a, dog_b')
+      .eq('dog_a', td.dog_id).eq('dog_b', dog.id).maybeSingle() : { data: null };
+    const data = f1 ?? f2;
     if (data) {
       setSelectedFriendship({
         id: data.id,
@@ -516,6 +565,7 @@ export default function WalksScreen() {
         isUserA: data.dog_a === dog.id,
       });
     }
+    setSelectedDog(td);
   };
 
   useEffect(() => {
@@ -529,20 +579,8 @@ export default function WalksScreen() {
     };
   }, []);
 
-  // On mount: if a 'trip_running' key exists in AsyncStorage, the previous session was
-  // force-closed while a trip was active — end the stale trip in the DB.
-  // (React Navigation keeps this screen mounted during background, so this only
-  //  runs after a real app kill, not on background→foreground resume.)
-  useEffect(() => {
-    if (!user) return;
-    AsyncStorage.getItem('trip_running').then((savedUserId) => {
-      if (savedUserId) {
-        endTrip(savedUserId).catch(() => {});
-        AsyncStorage.removeItem('trip_running');
-        setIsOnTrip(false);
-      }
-    });
-  }, [user?.id]);
+  // Stale trip cleanup on crash is handled in AppTabs so it runs regardless
+  // of which tab the user opens first after restarting.
 
   // ── Idle screen ──────────────────────────────────────────────────────────
   if (!onTrip) {
@@ -570,11 +608,14 @@ export default function WalksScreen() {
           </View>
         </View>
 
+        {dogParksError && (
+          <Text style={styles.warningText}>Park markers unavailable (network error)</Text>
+        )}
         {error && <Text style={styles.errorText}>{error}</Text>}
         <TouchableOpacity
-          style={[styles.startBtn, (!dog || loading) && styles.disabledBtn]}
+          style={[styles.startBtn, (!dog || loading || permissionDenied) && styles.disabledBtn]}
           onPress={handleStartTrip}
-          disabled={loading || !dog}
+          disabled={loading || !dog || permissionDenied}
           activeOpacity={0.8}
         >
           {loading ? (
@@ -606,6 +647,7 @@ export default function WalksScreen() {
             : undefined
         }
         showsUserLocation={false}
+        onRegionChangeComplete={(r) => { mapRegionRef.current = r; }}
       >
         {/* Parks rendered first — JSX order puts them below dogs naturally */}
         {dogParks
@@ -637,7 +679,11 @@ export default function WalksScreen() {
               <View style={styles.tripMarkerWrapper}>
                 <View style={styles.tripMarkerBubble}>
                   {td.dog_photo ? (
-                    <Image source={{ uri: td.dog_photo }} style={styles.tripMarkerPhoto} />
+                    <DogMarkerPhoto
+                      uri={td.dog_photo}
+                      style={styles.tripMarkerPhoto}
+                      fallbackStyle={styles.tripMarkerFallback}
+                    />
                   ) : (
                     <View style={styles.tripMarkerFallback}>
                       <Text style={{ fontSize: 18 }}>🐶</Text>
@@ -661,7 +707,12 @@ export default function WalksScreen() {
             <View style={styles.myMarkerOuter}>
               <View style={styles.myMarkerInner}>
                 {dog?.photo_url ? (
-                  <Image source={{ uri: dog.photo_url }} style={styles.myMarkerPhoto} />
+                  <DogMarkerPhoto
+                    uri={dog.photo_url}
+                    style={styles.myMarkerPhoto}
+                    fallbackStyle={{ justifyContent: 'center', alignItems: 'center' }}
+                    fallbackSize={22}
+                  />
                 ) : (
                   <Text style={{ fontSize: 22 }}>🐾</Text>
                 )}
@@ -695,6 +746,27 @@ export default function WalksScreen() {
           </TouchableOpacity>
         ))}
       </View>
+
+      {/* My location button */}
+      {myLocation && (
+        <TouchableOpacity
+          style={styles.myLocationBtn}
+          onPress={handleMyLocation}
+          activeOpacity={0.7}
+        >
+          <Svg width={26} height={26} viewBox="0 0 24 24" fill="none">
+            {/* Paper airplane outline */}
+            <Path
+              d="M22 2L11 13"
+              stroke="rgba(232,148,58,0.85)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"
+            />
+            <Path
+              d="M22 2L15 22L11 13L2 9L22 2Z"
+              stroke="rgba(232,148,58,0.85)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" fill="none"
+            />
+          </Svg>
+        </TouchableOpacity>
+      )}
 
       {/* End trip */}
       <View style={styles.endBtnWrapper}>
@@ -747,6 +819,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
   },
   errorText: { ...typography.bodySmall, color: colors.error, textAlign: 'center', marginBottom: spacing.md },
+  warningText: { ...typography.bodySmall, color: colors.textSecondary, textAlign: 'center', marginBottom: spacing.sm },
   startBtn: {
     backgroundColor: colors.primary,
     paddingVertical: 16,
@@ -764,8 +837,10 @@ const styles = StyleSheet.create({
     top: 12,
     left: 16,
     right: 16,
-    backgroundColor: 'rgba(10, 10, 10, 0.85)',
+    backgroundColor: 'rgba(11, 10, 8, 0.88)',
     borderRadius: borderRadius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(232, 148, 58, 0.18)',
     paddingVertical: 10,
     paddingHorizontal: 16,
     flexDirection: 'row',
@@ -788,6 +863,19 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.full,
   },
   endBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  myLocationBtn: {
+    position: 'absolute',
+    bottom: 110,
+    right: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: 'rgba(232,148,58,0.45)',
+    backgroundColor: 'rgba(11,10,8,0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   myMarkerOuter: {
     width: 58,
     height: 58,
@@ -866,8 +954,10 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     flexDirection: 'row',
     gap: 6,
-    backgroundColor: 'rgba(10,10,10,0.8)',
+    backgroundColor: 'rgba(11,10,8,0.88)',
     borderRadius: borderRadius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(232,148,58,0.22)',
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
@@ -907,8 +997,12 @@ const sheet = StyleSheet.create({
   },
   container: {
     backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: colors.border,
     maxHeight: SCREEN_HEIGHT * 0.72,
     paddingBottom: 32,
   },
@@ -977,7 +1071,7 @@ const sheet = StyleSheet.create({
   },
   tagText: { ...typography.caption, color: colors.textSecondary },
   tagAlt: {
-    backgroundColor: 'rgba(47,128,237,0.15)',
+    backgroundColor: 'rgba(232,148,58,0.15)',
     borderRadius: borderRadius.full,
     paddingHorizontal: 12,
     paddingVertical: 4,
@@ -1037,6 +1131,8 @@ const incoming = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
     borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
     padding: spacing.lg,
     width: '100%',
     alignItems: 'center',

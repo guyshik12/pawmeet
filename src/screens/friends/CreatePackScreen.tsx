@@ -3,7 +3,7 @@ import {
   View, Text, TextInput, TouchableOpacity, FlatList,
   StyleSheet, Image, ActivityIndicator,
 } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
 import { useDogStore } from '../../store/dogStore';
 import { getFriends } from '../../services/friendService';
@@ -28,6 +28,7 @@ export default function CreatePackScreen({ navigation }: { navigation: any }) {
   const [packType, setPackType] = useState<PackType>('public');
   const [selectedFriendIds, setSelectedFriendIds] = useState<Set<string>>(new Set());
   const [creating, setCreating] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data: friends = [], isLoading } = useQuery({
     queryKey: ['friends', userId],
@@ -63,6 +64,7 @@ export default function CreatePackScreen({ navigation }: { navigation: any }) {
         packType,
         selectedFriends,
       );
+      queryClient.invalidateQueries({ queryKey: ['packs'] });
       navigation.replace('PackChat', {
         packId: pack.id,
         packName: pack.name,
