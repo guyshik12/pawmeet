@@ -10,7 +10,7 @@ import { CommonActions } from '@react-navigation/native';
 import { useAuthStore } from '../../store/authStore';
 import { useDogStore } from '../../store/dogStore';
 import { useUnreadStore } from '../../store/unreadStore';
-import { getFriends, getUnreadCountsPerFriendship } from '../../services/friendService';
+import { getFriends, getUnreadCountsPerFriendship, getFriendshipByDogs, handleDogLike } from '../../services/friendService';
 import { sendMessage } from '../../services/chatService';
 import { supabase } from '../../lib/supabase';
 import { setOpenFriendsChat } from '../../services/activeChatRef';
@@ -20,7 +20,7 @@ import { useToast } from '../../hooks/useToast';
 import SegmentedControl from '../../components/SegmentedControl';
 import PackCard from '../../components/PackCard';
 import { getPacks, PackWithMembers, joinPack, createJoinRequest } from '../../services/packService';
-import { searchAll, SearchResults, SearchPackResult } from '../../services/searchService';
+import { searchAll, SearchResults, SearchPackResult, SearchDogResult } from '../../services/searchService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 function statusRingColor(status: 'active' | 'looking' | 'offline'): string {
@@ -612,6 +612,13 @@ function SearchResultsList({
   const [requestedPackIds, setRequestedPackIds] = useState<Set<string>>(new Set());
   const [previewPack, setPreviewPack] = useState<SearchPackResult | null>(null);
   const sheetAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
+  const [previewDog, setPreviewDog] = useState<SearchDogResult | null>(null);
+  const [dogFriendship, setDogFriendship] = useState<{ friendshipId: string; isUserA: boolean } | null>(null);
+  const [connectSent, setConnectSent] = useState<Set<string>>(new Set());
+  const [connecting, setConnecting] = useState(false);
+  const dogSheetAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
+  const [expandedOwners, setExpandedOwners] = useState<Set<string>>(new Set());
+  const friendDogIdSet = new Set(results.dogs.filter((d) => d.isFriend).map((d) => d.dogId));
 
   function openPackPreview(pack: SearchPackResult) {
     setPreviewPack(pack);
@@ -656,6 +663,56 @@ function SearchResultsList({
     } catch (e) {
       console.error('[SearchResultsList] createJoinRequest error:', e);
     }
+  }
+
+  async function openDogPreview(dog: SearchDogResult) {
+    setPreviewDog(dog);
+    setDogFriendship(null);
+    Animated.spring(dogSheetAnim, {
+      toValue: 0,
+      useNativeDriver: true,
+      damping: 18,
+      stiffness: 160,
+    }).start();
+    if (dog.isFriend && activeDog?.id) {
+      const fs = await getFriendshipByDogs(activeDog.id, dog.dogId);
+      setDogFriendship(fs);
+    }
+  }
+
+  function closeDogPreview() {
+    Animated.spring(dogSheetAnim, {
+      toValue: SHEET_HEIGHT,
+      useNativeDriver: true,
+      damping: 18,
+      stiffness: 160,
+    }).start(() => {
+      setPreviewDog(null);
+      setDogFriendship(null);
+    });
+  }
+
+  async function handleConnect(dog: SearchDogResult) {
+    if (!activeDog || !userId) return;
+    setConnecting(true);
+    try {
+      await handleDogLike(activeDog.id, dog.dogId, userId, dog.ownerId);
+      setConnectSent((prev) => new Set([...prev, dog.dogId]));
+      closeDogPreview();
+    } catch (e) {
+      console.error('[SearchResultsList] connect error:', e);
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  function toggleOwner(ownerId: string) {
+    setExpandedOwners((prev) => {
+      const next = new Set(prev);
+      if (next.has(ownerId)) next.delete(ownerId);
+      else next.add(ownerId);
+      return next;
+    });
   }
 
   return (
@@ -722,7 +779,7 @@ function SearchResultsList({
         <View style={searchStyles.section}>
           <Text style={searchStyles.sectionHeader}>Dogs</Text>
           {results.dogs.map((dog) => (
-            <View key={dog.dogId} style={searchStyles.resultRow}>
+            <TouchableOpacity key={dog.dogId} style={searchStyles.resultRow} activeOpacity={0.7} onPress={() => openDogPreview(dog)}>
               <View style={searchStyles.avatarSmall}>
                 {dog.dogPhoto
                   ? <Image source={{ uri: dog.dogPhoto }} style={searchStyles.avatarImg} />
@@ -737,7 +794,7 @@ function SearchResultsList({
               ) : (
                 <Text style={searchStyles.resultMeta}>{dog.ownerName}</Text>
               )}
-            </View>
+            </TouchableOpacity>
           ))}
         </View>
       )}
@@ -746,20 +803,62 @@ function SearchResultsList({
         <View style={searchStyles.section}>
           <Text style={searchStyles.sectionHeader}>Owners</Text>
           {results.owners.map((owner) => (
-            <View key={owner.ownerId} style={searchStyles.resultRow}>
-              <View style={searchStyles.avatarSmall}>
-                {owner.ownerPhoto
-                  ? <Image source={{ uri: owner.ownerPhoto }} style={searchStyles.avatarImg} />
-                  : <Text style={{ fontSize: 20 }}>👤</Text>}
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={searchStyles.resultName}>{owner.ownerName}</Text>
-                {owner.dogs.length > 0 && (
-                  <Text style={searchStyles.resultMeta}>
-                    {owner.dogs.map((d) => d.name).join(', ')}
-                  </Text>
-                )}
-              </View>
+            <View key={owner.ownerId}>
+              <TouchableOpacity
+                style={searchStyles.resultRow}
+                activeOpacity={0.7}
+                onPress={() => toggleOwner(owner.ownerId)}
+              >
+                <View style={searchStyles.avatarSmall}>
+                  {owner.ownerPhoto
+                    ? <Image source={{ uri: owner.ownerPhoto }} style={searchStyles.avatarImg} />
+                    : <Text style={{ fontSize: 20 }}>👤</Text>}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={searchStyles.resultName}>{owner.ownerName}</Text>
+                  {owner.dogs.length > 0 && (
+                    <Text style={searchStyles.resultMeta}>
+                      {owner.dogs.map((d) => d.name).join(', ')}
+                    </Text>
+                  )}
+                </View>
+                <Text style={{ fontSize: 14, color: colors.textSecondary, marginLeft: spacing.sm }}>
+                  {expandedOwners.has(owner.ownerId) ? '▾' : '▸'}
+                </Text>
+              </TouchableOpacity>
+              {expandedOwners.has(owner.ownerId) && owner.dogs.map((d) => {
+                const dogResult: SearchDogResult = {
+                  type: 'dog',
+                  dogId: d.id,
+                  dogName: d.name,
+                  dogBreed: d.breed,
+                  dogPhoto: d.photo,
+                  ownerId: owner.ownerId,
+                  ownerName: owner.ownerName,
+                  isFriend: friendDogIdSet.has(d.id),
+                };
+                return (
+                  <TouchableOpacity
+                    key={d.id}
+                    style={[searchStyles.resultRow, { paddingLeft: spacing.xl }]}
+                    activeOpacity={0.7}
+                    onPress={() => openDogPreview(dogResult)}
+                  >
+                    <View style={searchStyles.avatarSmall}>
+                      {d.photo
+                        ? <Image source={{ uri: d.photo }} style={searchStyles.avatarImg} />
+                        : <Text style={{ fontSize: 20 }}>🐶</Text>}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={searchStyles.resultName}>{d.name}</Text>
+                      {d.breed ? <Text style={searchStyles.resultMeta}>{d.breed}</Text> : null}
+                    </View>
+                    {friendDogIdSet.has(d.id) ? (
+                      <Text style={searchStyles.statusLabel}>Friend ✓</Text>
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           ))}
         </View>
@@ -825,6 +924,88 @@ function SearchResultsList({
             >
               <Text style={[searchStyles.actionBtnText, searchStyles.actionBtnOutlineText]}>
                 {requestedPackIds.has(previewPack.packId) ? 'Request Sent ✓' : 'Request to Join'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+    </Animated.View>
+
+    {previewDog && (
+      <TouchableWithoutFeedback onPress={closeDogPreview}>
+        <View style={StyleSheet.absoluteFill} />
+      </TouchableWithoutFeedback>
+    )}
+    <Animated.View
+      style={[searchStyles.sheet, { transform: [{ translateY: dogSheetAnim }] }]}
+      pointerEvents={previewDog ? 'auto' : 'none'}
+    >
+      {previewDog && (
+        <View style={searchStyles.sheetInner}>
+          <TouchableOpacity style={searchStyles.sheetClose} onPress={closeDogPreview}>
+            <Text style={{ color: colors.textSecondary, fontWeight: '600' }}>✕</Text>
+          </TouchableOpacity>
+          <View style={{ width: 80, height: 80, borderRadius: 40, overflow: 'hidden', backgroundColor: colors.surfaceHigh, marginBottom: spacing.sm, justifyContent: 'center', alignItems: 'center' }}>
+            {previewDog.dogPhoto
+              ? <Image source={{ uri: previewDog.dogPhoto }} style={{ width: 80, height: 80 }} />
+              : <Text style={{ fontSize: 36 }}>🐶</Text>}
+          </View>
+          <Text style={[searchStyles.resultName, { fontSize: 20, marginBottom: 2 }]}>
+            {previewDog.dogName}
+          </Text>
+          {previewDog.dogBreed ? (
+            <Text style={[searchStyles.resultMeta, { marginBottom: 2 }]}>{previewDog.dogBreed}</Text>
+          ) : null}
+          <Text style={[searchStyles.resultMeta, { marginBottom: spacing.md }]}>
+            with {previewDog.ownerName}
+          </Text>
+          {previewDog.isFriend ? (
+            <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+              <TouchableOpacity
+                style={[searchStyles.actionBtn, { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm }]}
+                onPress={() => {
+                  closeDogPreview();
+                  if (dogFriendship) {
+                    navigation.navigate('Chat', {
+                      friendshipId: dogFriendship.friendshipId,
+                      friendName: previewDog.ownerName,
+                      friendDogName: previewDog.dogName,
+                      isUserA: dogFriendship.isUserA,
+                    });
+                  }
+                }}
+              >
+                <Text style={searchStyles.actionBtnText}>Chat</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[searchStyles.actionBtn, searchStyles.actionBtnOutline, { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm }]}
+                onPress={() => {
+                  closeDogPreview();
+                  if (dogFriendship) {
+                    navigation.navigate('FriendProfile', {
+                      dog: { id: previewDog.dogId, name: previewDog.dogName, breed: previewDog.dogBreed, photo_url: previewDog.dogPhoto, owner_id: previewDog.ownerId },
+                      ownerProfile: { name: previewDog.ownerName },
+                      ownerId: previewDog.ownerId,
+                      friendshipId: dogFriendship.friendshipId,
+                      isUserA: dogFriendship.isUserA,
+                      friendName: previewDog.ownerName,
+                    });
+                  }
+                }}
+              >
+                <Text style={[searchStyles.actionBtnText, searchStyles.actionBtnOutlineText]}>Profile</Text>
+              </TouchableOpacity>
+            </View>
+          ) : connectSent.has(previewDog.dogId) ? (
+            <Text style={searchStyles.statusLabel}>Request Sent ✓</Text>
+          ) : (
+            <TouchableOpacity
+              style={[searchStyles.actionBtn, { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm }]}
+              onPress={() => handleConnect(previewDog)}
+              disabled={connecting}
+            >
+              <Text style={searchStyles.actionBtnText}>
+                {connecting ? 'Sending...' : 'Connect 🐾'}
               </Text>
             </TouchableOpacity>
           )}
