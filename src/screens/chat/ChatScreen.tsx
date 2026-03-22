@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, FlatList, TextInput, TouchableOpacity,
-  StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
+  StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
 } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
+import { useDogStore } from '../../store/dogStore';
+import { useUnreadStore } from '../../store/unreadStore';
 import { getMessages, sendMessage } from '../../services/chatService';
 import { markFriendshipRead } from '../../services/friendService';
 import { supabase } from '../../lib/supabase';
@@ -21,14 +23,42 @@ type Props = {
 export default function ChatScreen({ route, navigation }: Props) {
   const { friendshipId, friendName, friendDogName, isUserA } = route.params;
   const { user } = useAuthStore();
+  const { currentDog } = useDogStore();
+  const activeDog = currentDog();
   const queryClient = useQueryClient();
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
+  const unreadCount = useUnreadStore((s) => s.count);
+
   useEffect(() => {
-    navigation.setOptions({ title: friendDogName });
-  }, [friendDogName]);
+    const cacheKey = ['unread_counts', user?.id, (activeDog ? [activeDog.id] : []).join()];
+    const cached = queryClient.getQueryData<Record<string, number>>(cacheKey);
+    if ((cached?.[friendshipId] ?? 0) > 0) {
+      useUnreadStore.getState().decrement();
+      queryClient.setQueryData(cacheKey, (old: Record<string, number> | undefined) => {
+        if (!old) return {};
+        return { ...old, [friendshipId]: 0 };
+      });
+    }
+  }, [friendshipId]);
+
+  useEffect(() => {
+    navigation.setOptions({
+      title: friendDogName,
+      headerLeft: () => (
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ flexDirection: 'row', alignItems: 'center', marginLeft: -4 }}>
+          <Text style={{ fontSize: 40, color: colors.primary, lineHeight: 40 }}>‹</Text>
+          {unreadCount > 0 ? (
+            <View style={{ backgroundColor: colors.primary, borderRadius: 9, paddingHorizontal: 5, paddingVertical: 1, marginLeft: 4 }}>
+              <Text style={{ fontSize: 12, color: '#fff', fontWeight: '700' }}>{unreadCount}</Text>
+            </View>
+          ) : null}
+        </TouchableOpacity>
+      ),
+    });
+  }, [friendDogName, unreadCount]);
 
   // Tell AppTabs we're in this chat so it won't show a banner for its messages
   useEffect(() => {
@@ -41,7 +71,8 @@ export default function ChatScreen({ route, navigation }: Props) {
     if (user) {
       markFriendshipRead(friendshipId, user.id, isUserA).then(() => {
         queryClient.invalidateQueries({ queryKey: ['badge_count'] });
-        queryClient.invalidateQueries({ queryKey: ['unread_counts'] });
+        // Don't invalidate unread_counts or unread_conversation_count here —
+        // the optimistic update already handled them instantly on mount
       });
     }
   }, [friendshipId, user?.id]);
@@ -61,7 +92,11 @@ export default function ChatScreen({ route, navigation }: Props) {
       }, () => {
         queryClient.invalidateQueries({ queryKey: ['messages', friendshipId] });
       })
-      .subscribe();
+      .subscribe((status, err) => {
+        if (status === 'CHANNEL_ERROR') {
+          console.warn('[ChatScreen] Realtime channel error — Supabase will retry:', err);
+        }
+      });
     return () => { supabase.removeChannel(channel); };
   }, [friendshipId]);
 
@@ -82,6 +117,7 @@ export default function ChatScreen({ route, navigation }: Props) {
       queryClient.invalidateQueries({ queryKey: ['messages', friendshipId] });
     } catch (e: any) {
       setInput(text);
+      Alert.alert('Failed to send', 'Message could not be sent. Please try again.');
     } finally {
       setSending(false);
     }
