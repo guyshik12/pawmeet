@@ -397,6 +397,16 @@ export default function WalksScreen() {
       // Poll for incoming likes (reliable fallback for realtime)
       const currentDogId = dog.id;
       const seenIds = seenRequestIds.current;
+      // Fetch existing friend dog IDs to skip likes from dogs we're already friends with
+      const { data: existingFriends } = await supabase
+        .from('friendships')
+        .select('dog_a, dog_b')
+        .or(`dog_a.eq.${currentDogId},dog_b.eq.${currentDogId}`);
+      const friendDogIds = new Set<string>();
+      for (const f of existingFriends ?? []) {
+        friendDogIds.add((f as any).dog_a === currentDogId ? (f as any).dog_b : (f as any).dog_a);
+      }
+
       likePollRef.current = setInterval(async () => {
         const { data } = await supabase
           .from('friend_requests')
@@ -407,6 +417,11 @@ export default function WalksScreen() {
           .limit(5);
         for (const req of data ?? []) {
           if (seenIds.has(req.id)) continue;
+          // Skip likes from dogs we're already friends with
+          if (friendDogIds.has(req.sender_dog_id)) {
+            seenIds.add(req.id);
+            continue;
+          }
           // Skip reverse requests from dogs we already connected to
           if (connectedDogIds.current.has(req.sender_dog_id)) {
             seenIds.add(req.id);
@@ -434,6 +449,7 @@ export default function WalksScreen() {
             const row = payload.new;
             if (!row) return;
             if (row.receiver_dog_id !== dog.id) return;
+            if (friendDogIds.has(row.sender_dog_id)) { seenRequestIds.current.add(row.id); return; }
             if (connectedDogIds.current.has(row.sender_dog_id)) { seenRequestIds.current.add(row.id); return; }
             if (seenRequestIds.current.has(row.id)) return;
             seenRequestIds.current.add(row.id);
