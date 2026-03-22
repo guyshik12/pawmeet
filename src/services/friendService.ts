@@ -331,6 +331,22 @@ export async function handleDogLike(
   return { matched: true, friendshipId: created?.id, isUserA: true };
 }
 
+export async function getFriendshipByDogs(
+  myDogId: string,
+  theirDogId: string,
+): Promise<{ friendshipId: string; isUserA: boolean } | null> {
+  const { data, error } = await supabase
+    .from('friendships')
+    .select('id, dog_a, user_a')
+    .or(`and(dog_a.eq.${myDogId},dog_b.eq.${theirDogId}),and(dog_a.eq.${theirDogId},dog_b.eq.${myDogId})`)
+    .maybeSingle();
+  if (error || !data) return null;
+  return {
+    friendshipId: data.id,
+    isUserA: (data as any).dog_a === myDogId,
+  };
+}
+
 export async function unfriendship(friendshipId: string): Promise<void> {
   // Chain .select() so Supabase returns the deleted rows.
   // If RLS silently blocks the delete, data will be empty and we can surface a real error.
