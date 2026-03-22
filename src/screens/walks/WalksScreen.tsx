@@ -32,8 +32,7 @@ import { handleDogLike } from '../../services/friendService';
 import { supabase } from '../../lib/supabase';
 
 const DOG_PARK_PIN = require('../../../assets/dog-park-pin.png');
-const RADIUS_OPTIONS = [1, 2, 5, 10];
-const RADIUS_STORAGE_KEY = 'trip_radius_km';
+const RADIUS_STORAGE_KEY = 'settings_distance_km';
 
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371;
@@ -273,13 +272,18 @@ export default function WalksScreen() {
 
   const [dogParks, setDogParks] = useState<DogPark[]>([]);
 
-  // Load saved radius on mount
+  // Load distance setting on mount and when screen is focused
   useEffect(() => {
-    AsyncStorage.getItem(RADIUS_STORAGE_KEY).then((v) => {
-      const n = Number(v);
-      if (RADIUS_OPTIONS.includes(n)) setRadiusKm(n);
-    });
-  }, []);
+    const loadRadius = () => {
+      AsyncStorage.getItem(RADIUS_STORAGE_KEY).then((v) => {
+        const n = Number(v);
+        if (n >= 1 && n <= 10) setRadiusKm(n);
+      });
+    };
+    loadRadius();
+    const unsubscribe = navigation.addListener('focus', loadRadius);
+    return unsubscribe;
+  }, [navigation]);
 
   const handleRadiusChange = (km: number) => {
     setRadiusKm(km);
@@ -342,6 +346,7 @@ export default function WalksScreen() {
   };
 
   const watchRef = useRef<ExpoLocation.LocationSubscription | null>(null);
+  const locationPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mapRef = useRef<MapView>(null);
   const locationChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const likesChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -464,7 +469,7 @@ export default function WalksScreen() {
         )
         .subscribe();
 
-      // Watch own location
+      // Watch own location (native events)
       watchRef.current = await ExpoLocation.watchPositionAsync(
         { accuracy: ExpoLocation.Accuracy.Balanced, timeInterval: 5000, distanceInterval: 5 },
         async (loc) => {
@@ -473,6 +478,16 @@ export default function WalksScreen() {
           await updateTripLocation(user.id, newLat, newLng).catch(() => {});
         }
       );
+
+      // Poll own location as fallback (watchPositionAsync doesn't always fire in simulators)
+      locationPollRef.current = setInterval(async () => {
+        try {
+          const loc = await ExpoLocation.getCurrentPositionAsync({ accuracy: ExpoLocation.Accuracy.Balanced });
+          const { latitude: newLat, longitude: newLng } = loc.coords;
+          setMyLocation({ lat: newLat, lng: newLng });
+          await updateTripLocation(user.id, newLat, newLng).catch(() => {});
+        } catch {}
+      }, 10000);
 
       mapRef.current?.animateToRegion({
         latitude: lat,
@@ -493,6 +508,10 @@ export default function WalksScreen() {
 
     watchRef.current?.remove();
     watchRef.current = null;
+    if (locationPollRef.current) {
+      clearInterval(locationPollRef.current);
+      locationPollRef.current = null;
+    }
 
     if (pollRef.current) {
       clearInterval(pollRef.current);
@@ -587,6 +606,7 @@ export default function WalksScreen() {
   useEffect(() => {
     return () => {
       watchRef.current?.remove();
+      if (locationPollRef.current) clearInterval(locationPollRef.current);
       if (pollRef.current) clearInterval(pollRef.current);
       if (likePollRef.current) clearInterval(likePollRef.current);
       if (locationChannelRef.current) supabase.removeChannel(locationChannelRef.current);
@@ -607,22 +627,9 @@ export default function WalksScreen() {
         <Text style={styles.idleSubtitle}>
           Go live with your dog's location.{'\n'}See other dogs out on trips nearby.
         </Text>
-        <View style={styles.radiusPicker}>
-          <Text style={styles.radiusLabel}>Range</Text>
-          <View style={styles.radiusOptions}>
-            {RADIUS_OPTIONS.map((km) => (
-              <TouchableOpacity
-                key={km}
-                style={[styles.radiusOption, radiusKm === km && styles.radiusOptionActive]}
-                onPress={() => handleRadiusChange(km)}
-              >
-                <Text style={[styles.radiusOptionText, radiusKm === km && styles.radiusOptionTextActive]}>
-                  {km} km
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
+        <Text style={styles.rangeInfo}>
+          Range: {radiusKm === 0 ? 'Any distance' : `${radiusKm} km`} · Change in Profile settings
+        </Text>
 
         {dogParksError && (
           <Text style={styles.warningText}>Park markers unavailable (network error)</Text>
@@ -742,25 +749,23 @@ export default function WalksScreen() {
       <View style={styles.statusBar}>
         <View style={styles.statusDot} />
         <Text style={styles.statusText}>
-          {tripDogs.length === 0
-            ? 'No other dogs on a trip nearby'
-            : `${tripDogs.length} dog${tripDogs.length > 1 ? 's' : ''} nearby — tap to connect`}
+          {(() => {
+            const inRange = myLocation
+              ? tripDogs.filter((td) => haversineKm(myLocation.lat, myLocation.lng, td.lat, td.lng) <= radiusKm).length
+              : tripDogs.length;
+            const total = tripDogs.length;
+            if (total === 0) return 'No other dogs on a trip right now';
+            if (inRange === 0) return `${total} dog${total > 1 ? 's' : ''} active · none in your ${radiusKm}km range`;
+            return `${inRange} dog${inRange > 1 ? 's' : ''} in range · ${total} active`;
+          })()}
         </Text>
       </View>
 
-      {/* Range picker */}
+      {/* Range info */}
       <View style={styles.radiusPickerMap}>
-        {RADIUS_OPTIONS.map((km) => (
-          <TouchableOpacity
-            key={km}
-            style={[styles.radiusOptionMap, radiusKm === km && styles.radiusOptionMapActive]}
-            onPress={() => handleRadiusChange(km)}
-          >
-            <Text style={[styles.radiusOptionMapText, radiusKm === km && styles.radiusOptionMapTextActive]}>
-              {km}km
-            </Text>
-          </TouchableOpacity>
-        ))}
+        <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>
+          {radiusKm === 0 ? 'Any distance' : `${radiusKm} km range`}
+        </Text>
       </View>
 
       {/* My location button */}
@@ -832,6 +837,12 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
+    marginBottom: spacing.md,
+  },
+  rangeInfo: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    textAlign: 'center',
     marginBottom: spacing.xl,
   },
   errorText: { ...typography.bodySmall, color: colors.error, textAlign: 'center', marginBottom: spacing.md },
