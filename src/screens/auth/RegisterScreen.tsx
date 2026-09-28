@@ -21,15 +21,50 @@ export default function RegisterScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(false);
 
   const handleRegister = async () => {
-    if (!name || !email || !password) { Alert.alert('Error', 'Please fill in all fields'); return; }
-    if (password.length < 6) { Alert.alert('Error', 'Password must be at least 6 characters'); return; }
+    if (!name.trim() || !email.trim() || !password) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+    if (password.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters');
+      return;
+    }
     setLoading(true);
-    const { data, error } = await supabase.auth.signUp({ email: email.trim(), password, options: { data: { name } } });
-    if (error) { setLoading(false); Alert.alert('Failed', error.message); return; }
-    if (data.user) await supabase.from('profiles').insert({ id: data.user.id, name }).single();
-    setLoading(false);
-    Alert.alert('Welcome!', 'Account created. Sign in to continue.');
-    navigation.navigate(Routes.Login);
+    try {
+      const trimmedEmail = email.trim();
+      const { data, error } = await supabase.auth.signUp({
+        email: trimmedEmail,
+        password,
+        options: { data: { name: name.trim() } },
+      });
+      if (error) {
+        Alert.alert('Sign up failed', error.message);
+        return;
+      }
+      if (!data.user) {
+        Alert.alert('Sign up failed', 'No user was returned. Please try again.');
+        return;
+      }
+
+      // NOTE: we intentionally do NOT insert into `profiles` here. RootNavigator's
+      // `getOrCreateProfile` handles that lazily on first authenticated load, which
+      // works whether or not email confirmation is enabled (no session = no RLS-
+      // approved insert from this screen).
+      if (data.session) {
+        // Email confirmation disabled — session is live. RootNavigator's
+        // onAuthStateChange will switch to AppTabs and create the profile row.
+        return;
+      }
+
+      // Email confirmation enabled — user must verify before signing in.
+      Alert.alert(
+        'Check your email',
+        `We sent a confirmation link to ${trimmedEmail}. Click it, then sign in below.`
+      );
+      navigation.navigate(Routes.Login);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const fields = [
@@ -43,7 +78,7 @@ export default function RegisterScreen({ navigation }: Props) {
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.hero}>
           <Text style={styles.title}>Create account</Text>
-          <Text style={styles.subtitle}>Join PawMeet and find friends for your dog</Text>
+          <Text style={styles.subtitle}>Join Sniffs and find friends for your dog</Text>
         </View>
 
         <View style={styles.form}>

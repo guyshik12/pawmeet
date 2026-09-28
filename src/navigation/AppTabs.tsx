@@ -6,6 +6,7 @@ import { colors } from '../constants/theme';
 import { Text, TouchableOpacity, Image, View, StyleSheet } from 'react-native';
 import DiscoveryHubScreen from '../screens/discover/DiscoveryHubScreen';
 import QuickMatchScreen from '../screens/discover/QuickMatchScreen';
+import OpenPacksScreen from '../screens/discover/OpenPacksScreen';
 import FriendsScreen from '../screens/friends/FriendsScreen';
 import FriendProfileScreen, { FriendProfileParams } from '../screens/friends/FriendProfileScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
@@ -94,6 +95,11 @@ function DiscoverNavigator() {
         component={QuickMatchScreen}
         options={{ title: 'Quick Match', headerBackTitle: ' ' }}
       />
+      <DiscoverStack.Screen
+        name={Routes.OpenPacks}
+        component={OpenPacksScreen}
+        options={{ title: 'Open Packs', headerBackTitle: ' ' }}
+      />
     </DiscoverStack.Navigator>
   );
 }
@@ -152,7 +158,7 @@ export default function AppTabs() {
   const activeDogIds = dog ? [dog.id] : [];
 
   // Load dogs immediately on auth — so all tabs have fresh data from the start
-  useQuery({
+  const dogsQuery = useQuery({
     queryKey: ['dogs', user?.id],
     queryFn: async () => {
       const prevId = prevDogIdRef.current;
@@ -178,6 +184,15 @@ export default function AppTabs() {
     enabled: !!user,
     staleTime: 0,
   });
+
+  // First-dog gate: when the dogs query has resolved and the user has zero dogs,
+  // force the AddEditDogModal open so they can't reach any tab without a dog
+  // profile. The modal hides its Cancel button in this mode.
+  useEffect(() => {
+    if (dogsQuery.isSuccess && dogs.length === 0 && !addDogVisible) {
+      setAddDogVisible(true);
+    }
+  }, [dogsQuery.isSuccess, dogs.length]);
 
   // Register push token once after login
   useEffect(() => {
@@ -400,6 +415,7 @@ export default function AppTabs() {
       <AddEditDogModal
         visible={addDogVisible}
         dog={null}
+        mandatory={dogs.length === 0}
         onClose={() => setAddDogVisible(false)}
         onSaved={() => {
           setAddDogVisible(false);

@@ -6,7 +6,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
-import { getProfile } from '../services/profileService';
+import { getOrCreateProfile } from '../services/profileService';
 import AuthStack from './AuthStack';
 import AppTabs from './AppTabs';
 import { colors } from '../constants/theme';
@@ -21,9 +21,15 @@ export default function RootNavigator() {
       if (s) {
         setSession(s);
         try {
-          const profileData = await getProfile(s.user.id);
+          const fallbackName = (s.user.user_metadata as { name?: string } | null)?.name;
+          const profileData = await getOrCreateProfile(s.user.id, fallbackName);
           setProfile(profileData);
-        } catch (_) {}
+        } catch (e) {
+          // Profile load/create failed — usually RLS. Log it so it's visible in
+          // Expo dev logs / Sentry rather than dying silently like before.
+          // eslint-disable-next-line no-console
+          console.warn('[RootNavigator] Failed to load/create profile:', e);
+        }
       } else {
         reset();
       }

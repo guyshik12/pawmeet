@@ -113,9 +113,14 @@ type Props = {
   dog: Dog | null;
   onClose: () => void;
   onSaved: () => void;
+  /**
+   * When true, the user cannot dismiss this modal — they have to create a dog
+   * to proceed. Used for the "first dog" gate after registration.
+   */
+  mandatory?: boolean;
 };
 
-export default function AddEditDogModal({ visible, dog, onClose, onSaved }: Props) {
+export default function AddEditDogModal({ visible, dog, onClose, onSaved, mandatory = false }: Props) {
   const { user } = useAuthStore();
   const [name, setName] = useState('');
   const [breed, setBreed] = useState('');
@@ -294,13 +299,23 @@ export default function AddEditDogModal({ visible, dog, onClose, onSaved }: Prop
   );
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={mandatory ? undefined : onClose}
+    >
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={onClose}>
-            <Text style={styles.cancel}>Cancel</Text>
-          </TouchableOpacity>
-          <Text style={styles.title}>{dog ? 'Edit Dog' : 'Add Dog'}</Text>
+          {mandatory ? (
+            // First-dog gate — no Cancel until they save a dog.
+            <View style={{ width: 60 }} />
+          ) : (
+            <TouchableOpacity onPress={onClose}>
+              <Text style={styles.cancel}>Cancel</Text>
+            </TouchableOpacity>
+          )}
+          <Text style={styles.title}>{mandatory ? 'Add Your First Dog' : (dog ? 'Edit Dog' : 'Add Dog')}</Text>
           <TouchableOpacity onPress={handleSave} disabled={saving}>
             <Text style={[styles.save, saving && { opacity: 0.5 }]}>{saving ? 'Saving…' : 'Save'}</Text>
           </TouchableOpacity>

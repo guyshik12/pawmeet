@@ -6,9 +6,33 @@ export async function getProfile(userId: string): Promise<Profile | null> {
     .from('profiles')
     .select('*')
     .eq('id', userId)
-    .single();
+    .maybeSingle();
   if (error) throw error;
   return data;
+}
+
+/**
+ * Loads the user's profile, creating one if it doesn't exist yet.
+ *
+ * This is the entry point used by RootNavigator on every auth state change.
+ * Returning here even after a failed insert keeps the user from being stuck
+ * in a "logged in but no profile" state — which used to happen when the
+ * Register screen tried to insert the profile before the session existed.
+ */
+export async function getOrCreateProfile(
+  userId: string,
+  fallbackName?: string
+): Promise<Profile | null> {
+  const existing = await getProfile(userId);
+  if (existing) return existing;
+
+  const { data: created, error: insertError } = await supabase
+    .from('profiles')
+    .insert({ id: userId, name: fallbackName ?? 'Friend' })
+    .select()
+    .single();
+  if (insertError) throw insertError;
+  return created;
 }
 
 export async function updateStatus(

@@ -8,6 +8,7 @@ export type NeighborhoodPack = {
   photo_url: string | null;
   memberCount: number;
   activeMemberCount: number;
+  hasFriend: boolean;
   memberPhotos: string[];
 };
 
@@ -30,36 +31,53 @@ export type NewPawsDog = {
 
 // ─── Neighborhood Highlights ─────────────────────────────────────────────────
 
-export async function getNeighborhoodPacks(currentUserId: string): Promise<NeighborhoodPack[]> {
-  const { data, error } = await supabase
-    .from('packs')
-    .select('id, name, type, photo_url, pack_members(user_id, dog_id, dog:dogs!dog_id(photo_url))')
-    .in('type', ['public', 'semi_public'])
-    .limit(10);
+export async function getNeighborhoodPacks(currentUserId: string, myDogId?: string | null): Promise<NeighborhoodPack[]> {
+  const [{ data, error }, { data: tripUsers }, { data: friendships }] = await Promise.all([
+    supabase
+      .from('packs')
+      .select('id, name, type, photo_url, pack_members(user_id, dog_id, dog:dogs!dog_id(photo_url))')
+      .in('type', ['public', 'semi_public'])
+      .limit(20),
+    supabase
+      .from('locations')
+      .select('owner_id')
+      .eq('on_trip', true),
+    myDogId
+      ? supabase.from('friendships').select('dog_a, dog_b').or(`dog_a.eq.${myDogId},dog_b.eq.${myDogId}`)
+      : Promise.resolve({ data: [] }),
+  ]);
   if (error) throw error;
 
-  // Get active trip user IDs
-  const { data: tripUsers } = await supabase
-    .from('locations')
-    .select('owner_id')
-    .eq('on_trip', true);
   const activeUserIds = new Set((tripUsers ?? []).map((t: any) => t.owner_id));
+  const friendDogIds = new Set((friendships ?? []).flatMap((f: any) => [f.dog_a, f.dog_b]));
 
-  return (data ?? []).map((p: any) => {
+  const packs = (data ?? []).map((p: any) => {
     const members = p.pack_members ?? [];
+    const activeMemberCount = members.filter((m: any) => activeUserIds.has(m.user_id)).length;
+    const hasFriend = members.some((m: any) => m.dog_id && friendDogIds.has(m.dog_id));
     return {
       id: p.id,
       name: p.name,
       type: p.type,
       photo_url: p.photo_url,
       memberCount: members.length,
-      activeMemberCount: members.filter((m: any) => activeUserIds.has(m.user_id)).length,
+      activeMemberCount,
+      hasFriend,
       memberPhotos: members
         .slice(0, 3)
         .map((m: any) => m.dog?.photo_url)
         .filter(Boolean),
     };
   });
+
+  // Sort: most active first, then friends' packs as tiebreaker
+  packs.sort((a, b) => {
+    if (b.activeMemberCount !== a.activeMemberCount) return b.activeMemberCount - a.activeMemberCount;
+    if (a.hasFriend !== b.hasFriend) return a.hasFriend ? -1 : 1;
+    return b.memberCount - a.memberCount;
+  });
+
+  return packs.slice(0, 10);
 }
 
 // ─── Trending Breeds ─────────────────────────────────────────────────────────

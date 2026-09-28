@@ -1,19 +1,24 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   FlatList,
   Image,
   SafeAreaView,
   Alert,
+  Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
 import { useDogStore } from '../../store/dogStore';
+import { joinPack, createJoinRequest, getPackMembersWithRoles, PackMemberWithRole } from '../../services/packService';
+import { supabase } from '../../lib/supabase';
+import { CommonActions } from '@react-navigation/native';
 import {
   getNeighborhoodPacks,
   getTrendingBreeds,
@@ -151,6 +156,9 @@ export default function DiscoveryHubScreen({ navigation }: { navigation: any }) 
   const userId = user?.id ?? '';
 
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
+  const [previewPack, setPreviewPack] = useState<NeighborhoodPack | null>(null);
+  const [previewMembers, setPreviewMembers] = useState<PackMemberWithRole[]>([]);
+  const packSheetAnim = useRef(new Animated.Value(360)).current;
 
   const toggleFilter = (key: string) => {
     setActiveFilters((prev) => {
@@ -165,17 +173,96 @@ export default function DiscoveryHubScreen({ navigation }: { navigation: any }) 
   };
 
   // ─── Queries ───────────────────────────────────────────────────────────────
-  const packsQuery = useQuery(['hub_packs'], () => getNeighborhoodPacks(userId), {
+
+  // My pack memberships — to know which packs I can enter
+  const { data: myPackIds = new Set<string>() } = useQuery({
+    queryKey: ['my_pack_ids', currentDog?.id],
+    queryFn: async () => {
+      if (!currentDog?.id) return new Set<string>();
+      const { data } = await supabase
+        .from('pack_members')
+        .select('pack_id')
+        .eq('dog_id', currentDog.id);
+      return new Set((data ?? []).map((m: any) => m.pack_id));
+    },
+    enabled: !!currentDog?.id,
+  });
+
+  const packsQuery = useQuery({
+    queryKey: ['hub_packs'],
+    queryFn: () => getNeighborhoodPacks(userId, currentDog?.id),
     enabled: !!userId,
   });
-  const breedsQuery = useQuery(['hub_breeds'], () => getTrendingBreeds(userId), {
+  const breedsQuery = useQuery({
+    queryKey: ['hub_breeds'],
+    queryFn: () => getTrendingBreeds(userId),
     enabled: !!userId,
   });
-  const newPawsQuery = useQuery(['hub_new_paws'], () => getNewPaws(userId), {
+  const newPawsQuery = useQuery({
+    queryKey: ['hub_new_paws'],
+    queryFn: () => getNewPaws(userId),
     enabled: !!userId,
   });
 
   // ─── Filtered data ─────────────────────────────────────────────────────────
+  async function openPackPreview(pack: NeighborhoodPack) {
+    console.log('[Hub] Pack tapped:', pack.name);
+    setPreviewPack(pack);
+    setPreviewMembers([]);
+    Animated.spring(packSheetAnim, {
+      toValue: 0,
+      useNativeDriver: true,
+      damping: 18,
+      stiffness: 160,
+    }).start();
+    try {
+      const members = await getPackMembersWithRoles(pack.id);
+      setPreviewMembers(members.slice(0, 5));
+    } catch {}
+  }
+
+  function closePackPreview() {
+    Animated.spring(packSheetAnim, {
+      toValue: 360,
+      useNativeDriver: true,
+      damping: 18,
+      stiffness: 160,
+    }).start(() => {
+      setPreviewPack(null);
+      setPreviewMembers([]);
+    });
+  }
+
+  function goToPackChat(id: string, name: string, count: number) {
+    navigation.dispatch(
+      CommonActions.navigate('FriendsStack', {
+        screen: 'PackChat',
+        params: { packId: id, packName: name, memberCount: count },
+      })
+    );
+  }
+
+  async function handlePackAction(pack: NeighborhoodPack) {
+    closePackPreview();
+    if (myPackIds.has(pack.id)) {
+      goToPackChat(pack.id, pack.name, pack.memberCount);
+    } else if (pack.type === 'public') {
+      try {
+        await joinPack(pack.id, userId, currentDog?.id ?? null);
+        goToPackChat(pack.id, pack.name, pack.memberCount + 1);
+      } catch (e) {
+        Alert.alert('Error', 'Could not join pack');
+      }
+    } else {
+      try {
+        await createJoinRequest(pack.id, userId, currentDog?.id ?? null);
+        Alert.alert('Request Sent', `Your request to join ${pack.name} has been sent to the Pack Leaders.`);
+      } catch (e) {
+        Alert.alert('Already Requested', 'You already sent a request to this pack.');
+      }
+    }
+  }
+
   const filteredPacks = useMemo(() => {
     const packs = packsQuery.data ?? [];
     if (activeFilters.has('live')) {
@@ -247,14 +334,6 @@ export default function DiscoveryHubScreen({ navigation }: { navigation: any }) 
             </LinearGradient>
           </TouchableOpacity>
 
-          {/* Open Packs */}
-          <TouchableOpacity
-            style={styles.openPacksPill}
-            activeOpacity={0.8}
-            onPress={() => navigation.navigate('OpenPacks')}
-          >
-            <Text style={styles.openPacksText}>Open Packs →</Text>
-          </TouchableOpacity>
         </View>
 
         {/* ── Filter Pills ── */}
@@ -287,31 +366,26 @@ export default function DiscoveryHubScreen({ navigation }: { navigation: any }) 
         {/* ── Neighborhood Highlights ── */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>NEIGHBORHOOD HIGHLIGHTS</Text>
-          <TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate('OpenPacks')}>
             <Text style={styles.seeAll}>See all →</Text>
           </TouchableOpacity>
         </View>
 
-        <FlatList
-          data={filteredPacks}
-          keyExtractor={(item) => item.id}
+        <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.horizontalList}
-          renderItem={({ item }) => (
-            <PackCard
-              pack={item}
-              onPress={() => {
-                Alert.alert(item.name, `${item.memberCount} members · ${item.activeMemberCount} active`);
-              }}
-            />
-          )}
-          ListEmptyComponent={
+        >
+          {filteredPacks.length === 0 ? (
             <Text style={styles.emptyText}>
               {packsQuery.isLoading ? 'Loading...' : 'No packs found'}
             </Text>
-          }
-        />
+          ) : (
+            filteredPacks.map((item) => (
+              <PackCard key={item.id} pack={item} onPress={() => openPackPreview(item)} />
+            ))
+          )}
+        </ScrollView>
 
         {/* ── Trending Breeds ── */}
         <View style={styles.sectionHeader}>
@@ -351,6 +425,69 @@ export default function DiscoveryHubScreen({ navigation }: { navigation: any }) 
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
+
+      {/* Pack Preview Bottom Sheet */}
+      {previewPack && (
+        <TouchableWithoutFeedback onPress={closePackPreview}>
+          <View style={StyleSheet.absoluteFill} />
+        </TouchableWithoutFeedback>
+      )}
+      <Animated.View
+        style={[styles.packSheet, { transform: [{ translateY: packSheetAnim }] }]}
+        pointerEvents={previewPack ? 'auto' : 'none'}
+      >
+        {previewPack && (
+          <View style={styles.packSheetInner}>
+            <TouchableOpacity style={styles.packSheetClose} onPress={closePackPreview}>
+              <Text style={{ color: hub.textSecondary, fontWeight: '600' }}>✕</Text>
+            </TouchableOpacity>
+
+            {/* Pack photo + name */}
+            {previewPack.photo_url ? (
+              <Image source={{ uri: previewPack.photo_url }} style={styles.packSheetPhoto} />
+            ) : (
+              <View style={[styles.packSheetPhoto, styles.packSheetPhotoPlaceholder]}>
+                <Text style={{ fontSize: 36 }}>🐾</Text>
+              </View>
+            )}
+            <Text style={styles.packSheetName}>{previewPack.name}</Text>
+            <Text style={styles.packSheetMeta}>
+              {previewPack.type === 'public' ? '🌍 Public' : '🔓 Semi-public'} · {previewPack.memberCount} members
+              {previewPack.activeMemberCount > 0 ? ` · ${previewPack.activeMemberCount} active` : ''}
+            </Text>
+
+            {/* Members/Leaders */}
+            {previewMembers.length > 0 && (
+              <View style={styles.packSheetMembers}>
+                {previewMembers.map((m) => (
+                  <View key={m.dogId ?? m.userId} style={styles.packSheetMember}>
+                    {m.dogPhoto ? (
+                      <Image source={{ uri: m.dogPhoto }} style={styles.packSheetMemberPhoto} />
+                    ) : (
+                      <View style={[styles.packSheetMemberPhoto, styles.packSheetMemberPhotoPlaceholder]}>
+                        <Text style={{ fontSize: 14 }}>🐶</Text>
+                      </View>
+                    )}
+                    <Text style={styles.packSheetMemberName} numberOfLines={1}>{m.dogName}</Text>
+                    {m.role === 'leader' && <Text style={styles.packSheetLeaderBadge}>🐕</Text>}
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Action button */}
+            <TouchableOpacity
+              style={styles.packSheetAction}
+              onPress={() => handlePackAction(previewPack)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.packSheetActionText}>
+                {myPackIds.has(previewPack.id) ? 'Open Chat' : previewPack.type === 'public' ? 'Join Pack' : 'Request to Join'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </Animated.View>
     </SafeAreaView>
   );
 }
@@ -639,5 +776,97 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 16,
+  },
+  // Pack Preview Sheet
+  packSheet: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 360,
+    backgroundColor: hub.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTopWidth: 1,
+    borderColor: hub.border,
+  },
+  packSheetInner: {
+    flex: 1,
+    alignItems: 'center',
+    padding: 20,
+    paddingTop: 28,
+  },
+  packSheetClose: {
+    position: 'absolute',
+    top: 12,
+    right: 16,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: hub.bg,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  packSheetPhoto: {
+    width: 72,
+    height: 72,
+    borderRadius: 20,
+    marginBottom: 10,
+  },
+  packSheetPhotoPlaceholder: {
+    backgroundColor: hub.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  packSheetName: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: hub.text,
+    marginBottom: 4,
+  },
+  packSheetMeta: {
+    fontSize: 12,
+    color: hub.textSecondary,
+    marginBottom: 16,
+  },
+  packSheetMembers: {
+    flexDirection: 'row',
+    gap: 14,
+    marginBottom: 20,
+  },
+  packSheetMember: {
+    alignItems: 'center',
+    width: 52,
+  },
+  packSheetMemberPhoto: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    marginBottom: 4,
+  },
+  packSheetMemberPhotoPlaceholder: {
+    backgroundColor: hub.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  packSheetMemberName: {
+    fontSize: 10,
+    color: hub.textSecondary,
+    textAlign: 'center',
+  },
+  packSheetLeaderBadge: {
+    fontSize: 10,
+    marginTop: 1,
+  },
+  packSheetAction: {
+    backgroundColor: hub.amber,
+    borderRadius: 20,
+    paddingHorizontal: 28,
+    paddingVertical: 10,
+  },
+  packSheetActionText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: hub.bg,
   },
 });

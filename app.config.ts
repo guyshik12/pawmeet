@@ -5,7 +5,7 @@ const { APP_NAME } = require('./config/app') as { APP_NAME: string };
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: APP_NAME,
-  slug: 'pawmeet',
+  slug: 'sniffs',
   version: '1.0.0',
   orientation: 'portrait',
   icon: './assets/icon.png',
@@ -17,6 +17,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   ios: {
     supportsTablet: true,
+    // NOTE: bundleIdentifier stays as com.pawmeet.app — changing it would break EAS / TestFlight history.
+    // The user-visible name is `APP_NAME` (Sniffs); the bundle ID is just a stable internal handle.
     bundleIdentifier: 'com.pawmeet.app',
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
@@ -30,6 +32,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       monochromeImage: './assets/android-icon-monochrome.png',
     },
     package: 'com.pawmeet.app',
+    predictiveBackGestureEnabled: false,
   },
   web: {
     favicon: './assets/favicon.png',
